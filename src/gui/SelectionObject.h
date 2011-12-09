@@ -140,6 +140,11 @@ public :
 
     void       setPicked( int i_picked )              { m_hitResult.picked = i_picked;         };
 
+    void       setSize( float sizeX, float sizeY, float sizeZ ) 
+    {
+        setSize( Vector( sizeX, sizeY, sizeZ ) );
+    }
+    
     void       setSize( Vector i_size )               { m_size = i_size; m_isDirty = true; update();  };
     Vector     getSize()                              { return m_size;};
 
@@ -147,6 +152,7 @@ public :
     float      getThreshold()                         { return m_threshold;                    };
 
     void       setTreeId( wxTreeItemId i_treeId )     { m_treeId = i_treeId;                   };
+    wxTreeItemId getTreeId()                          { return m_treeId; }
     
     void       unselect()                             { m_isSelected = false;                  };
     

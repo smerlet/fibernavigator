@@ -1,5 +1,7 @@
 #include "Octree.h"
 
+#include "../gui/SelectionVOI.h"
+
 #include <algorithm>
 
 //////////////////////////////////////////
@@ -220,11 +222,18 @@ vector<int> Octree::getPointsInside( SelectionObject* i_selectionObject )
     m_boxMax[2] = l_center.z + l_size.z / 2 * m_dh->m_zVoxel;
     
     m_id.clear();
-    if(i_selectionObject->getSelectionType() == BOX_TYPE)
+    if( i_selectionObject->getSelectionType() == BOX_TYPE )
+    {
         boxTest( m_minPointX, m_minPointY, m_minPointZ, m_maxPointX, m_maxPointY, m_maxPointZ, 0, m_quad1 );
-    else
+    }
+    else if( i_selectionObject->getSelectionType() == ELLIPSOID_TYPE )
+    {
         ellipsoidTest( m_minPointX, m_minPointY, m_minPointZ, m_maxPointX, m_maxPointY, m_maxPointZ, 0, m_quad1 );
-
+    }
+    else
+    {
+        VOITest( m_minPointX, m_minPointY, m_minPointZ, m_maxPointX, m_maxPointY, m_maxPointZ, 0, m_quad1, i_selectionObject );
+    }
 
     return m_id;
 
@@ -576,3 +585,133 @@ void Octree::ellipsoidTest( int i_minx, int i_miny, int i_minz, int i_maxx, int 
     }
 }
 
+//////////////////////////////////////////
+// VOI case
+//////////////////////////////////////////
+void Octree::VOITest( int i_minx, int i_miny, int i_minz, 
+                      int i_maxx, int i_maxy, int i_maxz, 
+                      int lvl, const vector<vector<int > >& currSub,
+                      SelectionObject *pSelObj )
+{
+    if(lvl == 2)
+        return;
+    
+    int indice;
+    
+    //Box extremities
+    float xMin = m_boxMin[0];
+    float xMax = m_boxMax[0];
+    float yMin = m_boxMin[1];
+    float yMax = m_boxMax[1];
+    float zMin = m_boxMin[2];
+    float zMax = m_boxMax[2];
+    
+    //Octree planes cutting
+    float midX = (i_maxx + i_minx) / 2.0f;
+    float midY = (i_maxy + i_miny) / 2.0f;
+    float midZ = (i_maxz + i_minz) / 2.0f;
+    
+    
+    //Checks in which Octree the selection Box is 
+    vector<bool> inBoxes(8, false);
+    
+    if(xMin < midX && xMax > i_minx)
+        if(yMin < midY && yMax > i_miny)
+            if(zMin < midZ && zMax > i_minz)
+            {
+                inBoxes[0] = true;
+                boxTest( i_minx, i_miny, i_minz, midX, midY, midZ, lvl+1, m_quad1 ); // Front Bottom Left
+                
+            }
+    
+    if(xMin < midX && xMax > i_minx)
+        if(yMin < i_maxy && yMax > midY)
+            if(zMin < midZ && zMax > i_minz)
+            {
+                inBoxes[1] = true;
+                boxTest( i_minx, midY, i_minz, midX, i_maxy, midZ, lvl+1, m_quad2 ); //Front Up Left
+            }
+    
+    if(xMin < i_maxx && xMax > midX)
+        if(yMin < midY && yMax > i_miny)
+            if(zMin < midZ && zMax > i_minz)
+            {
+                inBoxes[2] = true;
+                boxTest( midX, i_miny, i_minz, i_maxx, midY, midZ, lvl+1, m_quad3 ); //Front Bottom Right
+            }
+    
+    if(xMin < i_maxx && xMax > midX)
+        if(yMin < i_maxy && yMax > midY)
+            if(zMin < midZ && zMax > i_minz)
+            {
+                inBoxes[3] = true;
+                boxTest( midX, midY, i_minz, i_maxx, i_maxy, midZ, lvl+1, m_quad4 ); //Front Up Right
+            }
+    
+    if(xMin < midX && xMax > i_minx)
+        if(yMin < midY && yMax > i_miny)
+            if(zMin < i_maxz && zMax > midZ)
+            {
+                inBoxes[4] = true;
+                boxTest( i_minx, i_miny, midZ, midX, midY, i_maxz, lvl+1, m_quad5 ); //Back Bottom Left
+            }
+    
+    if(xMin < midX && xMax > i_minx)
+        if(yMin < i_maxy && yMax > midY)
+            if(zMin < i_maxz && zMax > midZ)
+            {
+                inBoxes[5] = true;
+                boxTest( i_minx, midY, midZ, midX, i_maxy, i_maxz, lvl+1, m_quad6 ); //Back Up Left
+            }
+    
+    if(xMin < i_maxx && xMax > midX)
+        if(yMin < midY && yMax > i_miny)
+            if(zMin < i_maxz && zMax > midZ)
+            {
+                inBoxes[6] = true;
+                boxTest( midX, i_miny, midZ, i_maxx, midY, i_maxz, lvl+1, m_quad7 ); //Back Bottom Right
+                
+            }
+    
+    if(xMin < i_maxx && xMax > midX)
+        if(yMin < i_maxy && yMax > midY)
+            if(zMin < i_maxz && zMax > midZ)
+            {
+                inBoxes[7] = true;
+                boxTest( midX, midY ,midZ, i_maxx, i_maxy, i_maxz, lvl+1, m_quad8 ); //Back up Right
+            }  
+    
+    SelectionVOI *pSelVOI = (SelectionVOI*)pSelObj;
+    if(lvl == 1)
+    {
+        float posX,posY,posZ;
+        
+        //Checks if any fibers are INSIDE the selection box, for Octree regions that are TRUE
+        for( unsigned int k( 0 ); k < inBoxes.size(); ++k)
+        {
+            if( inBoxes[k] )
+            {
+                for(unsigned int i = 0; i < currSub[k].size(); i++)
+                {
+                    indice = currSub[k][i];
+                    posX = m_pointArray[indice*3];
+                    posY = m_pointArray[indice*3+1];
+                    posZ = m_pointArray[indice*3+2];
+                    
+                    
+                    // Convert to voxel coordinates
+                    if( pSelVOI->isPointInside( posX, posY, posZ ) )
+                    
+                    /*if( (posX  - l_axisCenter)*(posX  - l_axisCenter) / ( l_axisRadius  * l_axisRadius  ) + 
+                       (posY - l_axis1Center)*(posY - l_axis1Center) / ( l_axis1Radius * l_axis1Radius ) + 
+                       (posZ - l_axis2Center)*(posZ - l_axis2Center) / ( l_axis2Radius * l_axis2Radius ) <= 1.0f )
+                    {*/
+                    {
+                        m_id.push_back(indice);
+                    }
+                    //}
+                }
+            }
+        }
+    }
+}

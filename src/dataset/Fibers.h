@@ -91,6 +91,22 @@ public:
 
     void    flipAxis( AxisType i_axe );
     
+    int     getFibersCount() const
+    { 
+        return m_countLines; 
+    }
+    
+    // TODO check if we can set const
+    Octree* getOctree() const
+    {
+        return m_pOctree;
+    }
+    
+    vector< int > getReverseIdx() const
+    {
+        return m_reverse;
+    }
+    
     virtual void createPropertiesSizer( PropertiesWindow *pParent );
     virtual void updatePropertiesSizer();
 

@@ -17,6 +17,7 @@
 #include "ToolBar.h"
 #include "MenuBar.h"
 #include "MainCanvas.h"
+#include "SelectionTree.h"
 #include "SelectionBox.h"
 #include "SelectionEllipsoid.h"
 #include "../dataset/Anatomy.h"
@@ -605,6 +606,8 @@ void MainFrame::onToggleSelectionObjects( wxCommandEvent& WXUNUSED(event) )
 
     // Get the selection object is selected.
     wxTreeItemId l_selectionObjectTreeId = m_pTreeWidget->GetSelection();
+    
+    // TODO selection tree
 
     if( treeSelected( l_selectionObjectTreeId ) == MASTER_OBJECT )
     {
@@ -768,6 +771,18 @@ void MainFrame::createNewSelectionObject( ObjectType i_newSelectionObjectType )
     {
         return;
     }
+    
+    // Check what is selected in the tree to know where to put this new selection object.
+    wxTreeItemId l_treeSelectionId = m_pTreeWidget->GetSelection();
+    
+    // For the moment, we can only add one root item.
+    if( treeSelectedNew( l_treeSelectionId ) == TYPE_SELECTION_MASTER && 
+        !m_pDatasetHelper->m_pSelectionTree->isEmpty() )
+    {
+        m_pDatasetHelper->printDebug( wxT("Cannot add more than one root selection item."), 2 );
+        return;
+    }
+    
     Vector l_center( m_pXSlider->GetValue() * m_pDatasetHelper->m_xVoxel, 
                      m_pYSlider->GetValue() * m_pDatasetHelper->m_yVoxel, 
                      m_pZSlider->GetValue() * m_pDatasetHelper->m_zVoxel );
@@ -791,12 +806,43 @@ void MainFrame::createNewSelectionObject( ObjectType i_newSelectionObjectType )
     {
         return;
     }
-    // Check what is selected in the tree to know where to put this new selection object.
-    wxTreeItemId l_treeSelectionId = m_pTreeWidget->GetSelection();
 
     wxTreeItemId l_newSelectionObjectId;
     
-    if( treeSelected( l_treeSelectionId ) == MASTER_OBJECT )
+    if( m_pDatasetHelper->m_pSelectionTree->isEmpty() )
+    {
+        l_newSelectionObject->setIsMaster( true );
+        int rootId = m_pDatasetHelper->m_pSelectionTree->setRoot( l_newSelectionObject );
+
+            CustomTreeItem *pTreeItem = new CustomTreeItem( rootId );
+        l_newSelectionObjectId = m_pTreeWidget->AppendItem( m_tSelectionObjectsId, l_newSelectionObject->getName(), 0, -1, pTreeItem );
+
+    }
+    else
+    {
+        CustomTreeItem *pItem = (CustomTreeItem*) m_pTreeWidget->GetItemData( l_treeSelectionId );
+        
+        int parentId = pItem->getId();
+        
+        int childId = m_pDatasetHelper->m_pSelectionTree->addChildrenObject( parentId,  l_newSelectionObject );
+        
+        CustomTreeItem *pTreeItem = new CustomTreeItem( childId );
+        l_newSelectionObjectId = m_pTreeWidget->AppendItem( l_treeSelectionId, l_newSelectionObject->getName(), 0, -1, pTreeItem );
+    }
+    
+    /*if( l_treeSelectionId.IsOk() )
+    {
+        CustomTreeItem *pItem = (CustomTreeItem*) m_pTreeWidget->GetItemData( l_treeSelectionId );
+        
+        int parentId = pItem->getId();
+        
+        int childId = m_pDatasetHelper->m_pSelectionTree->addChildrenObject( parentId,  l_newSelectionObject );
+        
+        CustomTreeItem *pTreeItem = new CustomTreeItem( childId );
+        l_newSelectionObjectId = m_pTreeWidget->AppendItem( l_treeSelectionId, l_newSelectionObject->getName(), 0, -1, pTreeItem );
+    }*/
+    
+    /*if( treeSelected( l_treeSelectionId ) == MASTER_OBJECT )
     {
         // Our new seleciton object is under another master selection object.
         l_newSelectionObjectId = m_pTreeWidget->AppendItem( l_treeSelectionId, l_newSelectionObject->getName(), 0, -1, l_newSelectionObject );
@@ -814,9 +860,14 @@ void MainFrame::createNewSelectionObject( ObjectType i_newSelectionObjectType )
     {
         // Our new seleciton object is on top.
         l_newSelectionObject->setIsMaster( true );
-        l_newSelectionObjectId = m_pTreeWidget->AppendItem( m_tSelectionObjectsId, l_newSelectionObject->getName(), 0, -1, l_newSelectionObject );
-        m_pTreeWidget->SetItemBackgroundColour( l_newSelectionObjectId, *wxCYAN );
-    }
+        //l_newSelectionObjectId = m_pTreeWidget->AppendItem( m_tSelectionObjectsId, l_newSelectionObject->getName(), 0, -1, l_newSelectionObject );
+        //m_pTreeWidget->SetItemBackgroundColour( l_newSelectionObjectId, *wxCYAN );
+        int rootId = m_pDatasetHelper->m_pSelectionTree->setRoot( l_newSelectionObject );
+        CustomTreeItem *pTreeItem = new CustomTreeItem( rootId );
+        l_newSelectionObjectId = m_pTreeWidget->AppendItem( m_tSelectionObjectsId, l_newSelectionObject->getName(), 0, -1, pTreeItem );
+        
+        // TODO selection tree
+    }*/
 
     m_pTreeWidget->EnsureVisible( l_newSelectionObjectId );
     m_pTreeWidget->SetItemImage( l_newSelectionObjectId, l_newSelectionObject->getIcon() );
@@ -1542,22 +1593,36 @@ void MainFrame::deleteTreeItem()
         {
             return;
         }
-        int l_selected = treeSelected( l_treeId );  
-        if (l_selected == CHILD_OBJECT)
+        TreeObjectType objectType = treeSelectedNew( l_treeId );
+        CustomTreeItem *pTreeItem = (CustomTreeItem*) m_pTreeWidget->GetItemData( l_treeId );
+        
+        if( objectType == TYPE_SELECTION_OBJECT )
         {
-            ((SelectionObject*) ((m_pTreeWidget->GetItemData(m_pTreeWidget->GetItemParent(l_treeId)))))->setIsDirty(true);
+            if( !m_pDatasetHelper->m_pSelectionTree->isRootItem( pTreeItem->getId() ) )
+            {
+                CustomTreeItem *pParentItem = (CustomTreeItem*) m_pTreeWidget->GetItemData( m_pTreeWidget->GetItemParent( l_treeId ) );
+                SelectionObject *pSelObj = m_pDatasetHelper->m_pSelectionTree->getObject( pParentItem->getId() );
+                pSelObj->setIsDirty( true );
+            }
         }
-        if (l_selected == CHILD_OBJECT || l_selected == MASTER_OBJECT || l_selected == POINT_DATASET)
+
+        if( objectType == TYPE_SELECTION_OBJECT && m_pDatasetHelper->m_pSelectionTree->containsId( pTreeItem->getId() ) )
         {  
-            deleteSceneObject();
-            m_pTreeWidget->Delete(l_treeId);
+            deleteSceneObject();  // TODO check
+            m_pTreeWidget->Delete( l_treeId );
+            
+            // Remove from the SelectionTree
+            m_pDatasetHelper->m_pSelectionTree->removeObject( pTreeItem->getId() );
+            
             if (m_pDatasetHelper->m_lastSelectedObject != NULL)
             {
                 m_pDatasetHelper->m_selBoxChanged = true;
             }
             m_pDatasetHelper->m_lastSelectedObject = NULL;
             m_pDatasetHelper->m_lastSelectedPoint = NULL;
-        }   
+        }
+        
+        // TODO selection box how do we delete points dataset
         m_pDatasetHelper->m_selBoxChanged = true;
     }
     refreshAllGLWidgets();
@@ -1573,68 +1638,95 @@ void MainFrame::onSelectTreeItem( wxTreeEvent& WXUNUSED(event) )
     {
         return;
     }
-    int l_selected = treeSelected( l_treeId );
+    
+    //int l_selected = treeSelected( l_treeId );
+    TreeObjectType objectType = treeSelectedNew( l_treeId );
+
     SelectionObject* l_selectionObject;
     SplinePoint* l_selectedPoint;
-
-    switch( l_selected )
+    
+    // TODO selection tree
+    CustomTreeItem *pTreeItem = (CustomTreeItem*) m_pTreeWidget->GetItemData( l_treeId );
+    
+    int treeItemId( -1 );
+    if( pTreeItem != NULL )
     {
-        case MASTER_OBJECT:
-        case CHILD_OBJECT:
-            if ( m_pDatasetHelper->m_lastSelectedObject )
-            {
-                m_pDatasetHelper->m_lastSelectedObject->unselect();
-            }
-            if ( m_pDatasetHelper->m_lastSelectedPoint )
-            {
-                m_pDatasetHelper->m_lastSelectedPoint->unselect();
-                m_pDatasetHelper->m_lastSelectedPoint = NULL;
-            }
-
-            l_selectionObject = (SelectionObject*)( m_pTreeWidget->GetItemData( l_treeId ) );
-            m_pDatasetHelper->m_lastSelectedObject = l_selectionObject;
-            m_pDatasetHelper->m_lastSelectedObject->select( false );
-            m_pLastSelectedSceneObject = l_selectionObject;
-            m_lastSelectedListItem = -1;
-            break;
-
-        case POINT_DATASET:
-            if( m_pDatasetHelper->m_lastSelectedPoint )
-            {
-                m_pDatasetHelper->m_lastSelectedPoint->unselect();
-            }
-            if( m_pDatasetHelper->m_lastSelectedObject )
-            {
-                m_pDatasetHelper->m_lastSelectedObject->unselect();
-                m_pDatasetHelper->m_lastSelectedObject = NULL;
-            }
-
-            l_selectedPoint = (SplinePoint*)( m_pTreeWidget->GetItemData( l_treeId ) );
-            m_pDatasetHelper->m_lastSelectedPoint = l_selectedPoint;
-            m_pDatasetHelper->m_lastSelectedPoint->select( false );
-            m_pLastSelectedSceneObject = l_selectedPoint;
-            m_lastSelectedListItem = -1;
-            break;
-
-        default:
-            if( m_pDatasetHelper->m_lastSelectedPoint )
-            {
-                m_pDatasetHelper->m_lastSelectedPoint->unselect();
-                m_pDatasetHelper->m_lastSelectedPoint = NULL;
-            }
-            if( m_pDatasetHelper->m_lastSelectedObject )
-            {
-                m_pDatasetHelper->m_lastSelectedObject->unselect();
-                m_pDatasetHelper->m_lastSelectedObject = NULL;
-            }
-            break;
-    }    
-#ifdef __WXMSW__
-    if (m_currentListItem != -1)
-    {       
-        m_pListCtrl->SetItemState(m_currentListItem,0,wxLIST_STATE_SELECTED|wxLIST_STATE_FOCUSED);  
+        treeItemId = pTreeItem->getId();
     }
+    
+    // When NULL, could not be cast. It is probably the "selection object" item.
+    //if( pTreeItem != NULL )
+    {
+        //switch( l_selected )
+        switch( objectType )
+        {
+            //case MASTER_OBJECT:
+            //case CHILD_OBJECT:
+            case TYPE_SELECTION_OBJECT:
+                if ( m_pDatasetHelper->m_lastSelectedObject )
+                {
+                    m_pDatasetHelper->m_lastSelectedObject->unselect();
+                }
+                
+                if ( m_pDatasetHelper->m_lastSelectedPoint )
+                {
+                    m_pDatasetHelper->m_lastSelectedPoint->unselect();
+                    m_pDatasetHelper->m_lastSelectedPoint = NULL;
+                }
+
+                //if( pTreeItem != NULL )
+                //{
+                    l_selectionObject = m_pDatasetHelper->m_pSelectionTree->getObject( treeItemId );
+                //}
+                //else
+                //{
+                //    l_selectionObject = (SelectionObject*)( m_pTreeWidget->GetItemData( l_treeId ) );
+                //}
+                
+                m_pDatasetHelper->m_lastSelectedObject = l_selectionObject;
+                m_pDatasetHelper->m_lastSelectedObject->select( false );
+                m_pLastSelectedSceneObject = l_selectionObject;
+                m_lastSelectedListItem = -1;
+                break;
+
+            case TYPE_POINTS_OBJECT:
+                if( m_pDatasetHelper->m_lastSelectedPoint )
+                {
+                    m_pDatasetHelper->m_lastSelectedPoint->unselect();
+                }
+                if( m_pDatasetHelper->m_lastSelectedObject )
+                {
+                    m_pDatasetHelper->m_lastSelectedObject->unselect();
+                    m_pDatasetHelper->m_lastSelectedObject = NULL;
+                }
+                // TODO selection tree check
+                l_selectedPoint = (SplinePoint*)( m_pTreeWidget->GetItemData( l_treeId ) );
+                m_pDatasetHelper->m_lastSelectedPoint = l_selectedPoint;
+                m_pDatasetHelper->m_lastSelectedPoint->select( false );
+                m_pLastSelectedSceneObject = l_selectedPoint;
+                m_lastSelectedListItem = -1;
+                break;
+
+            default:
+                if( m_pDatasetHelper->m_lastSelectedPoint )
+                {
+                    m_pDatasetHelper->m_lastSelectedPoint->unselect();
+                    m_pDatasetHelper->m_lastSelectedPoint = NULL;
+                }
+                if( m_pDatasetHelper->m_lastSelectedObject )
+                {
+                    m_pDatasetHelper->m_lastSelectedObject->unselect();
+                    m_pDatasetHelper->m_lastSelectedObject = NULL;
+                }
+                break;
+        }    
+#ifdef __WXMSW__
+        if (m_currentListItem != -1)
+        {       
+            m_pListCtrl->SetItemState(m_currentListItem,0,wxLIST_STATE_SELECTED|wxLIST_STATE_FOCUSED);  
+        }
 #endif
+    }
     refreshAllGLWidgets();
 }
 
@@ -1645,48 +1737,31 @@ void MainFrame::onRightClickTreeItem( wxTreeEvent& event )
 
 void MainFrame::onActivateTreeItem( wxTreeEvent& WXUNUSED(event) )
 {
-    wxTreeItemId l_treeId = m_pTreeWidget->GetSelection();
+    wxTreeItemId treeId = m_pTreeWidget->GetSelection();
+    
+    TreeObjectType objectType = treeSelectedNew( treeId );
 
-    int l_selected = treeSelected( l_treeId );
-    if( l_selected == MASTER_OBJECT )
+    if( objectType == TYPE_SELECTION_OBJECT )
     {
-        SelectionObject* l_selectionObject = (SelectionObject*)( m_pTreeWidget->GetItemData( l_treeId ) );
-        l_selectionObject->toggleIsActive();
-        m_pTreeWidget->SetItemImage(l_treeId, l_selectionObject->getIcon());
-        l_selectionObject->setIsDirty(true);
-
-        int l_childSelectionObjects = m_pTreeWidget->GetChildrenCount( l_treeId );
-        wxTreeItemIdValue l_childCookie = 0;
-
-        for( int i = 0; i < l_childSelectionObjects; ++i )
+        CustomTreeItem *pTreeItem = (CustomTreeItem*) m_pTreeWidget->GetItemData( treeId );
+        
+        SelectionObject *pSelObject = m_pDatasetHelper->m_pSelectionTree->getObject( pTreeItem->getId() );
+        
+        pSelObject->toggleIsActive();
+        m_pTreeWidget->SetItemImage( treeId, pSelObject->getIcon() );
+        pSelObject->setIsDirty( true );
+        
+        SelectionTree::SelectionObjectVector childObjects = m_pDatasetHelper->m_pSelectionTree->getChildrenObjects( pTreeItem->getId() );
+        
+        for( unsigned int objIdx( 0 ); objIdx < childObjects.size(); ++objIdx )
         {
-            wxTreeItemId l_childId = m_pTreeWidget->GetNextChild( l_treeId, l_childCookie );
-            if( l_childId.IsOk() )
-            {
-                SelectionObject* l_childSelectionBox = ( (SelectionObject*)( m_pTreeWidget->GetItemData( l_childId ) ) );
-                l_childSelectionBox->setIsActive( l_selectionObject->getIsActive() );
-                m_pTreeWidget->SetItemImage( l_childId, l_childSelectionBox->getIcon() );
-                l_childSelectionBox->setIsDirty( true );
-            }
+            childObjects[objIdx]->setIsActive( pSelObject->getIsActive() );
+            childObjects[objIdx]->setIsDirty( true );
+            
+            m_pTreeWidget->SetItemImage( childObjects[objIdx]->getTreeId(), childObjects[objIdx]->getIcon() );
         }
     }
-    else if( l_selected == CHILD_OBJECT )
-    {
-        SelectionObject* l_box = (SelectionObject*)( m_pTreeWidget->GetItemData( l_treeId ) );
-
-        l_box->toggleIsNOT();
-        wxTreeItemId l_parentId = m_pTreeWidget->GetItemParent( l_treeId );
-        ((SelectionObject*)( m_pTreeWidget->GetItemData( l_parentId ) ) )->setIsDirty( true );
-
-        if( l_box->getIsNOT() )
-        {
-            m_pTreeWidget->SetItemBackgroundColour( l_treeId, *wxRED );
-        }
-        else
-        {
-            m_pTreeWidget->SetItemBackgroundColour( l_treeId, *wxGREEN );
-        }
-    }
+    
     refreshAllGLWidgets();
 }
 
@@ -1698,12 +1773,15 @@ void MainFrame::onTreeChange()
 
 void MainFrame::onTreeLabelEdit( wxTreeEvent& event )
 {
-    wxTreeItemId l_treeId = event.GetItem();
-    int l_selected = treeSelected( l_treeId );
+    wxTreeItemId treeId = event.GetItem();
+    TreeObjectType objectType = treeSelectedNew( treeId );
 
-    if( l_selected == CHILD_OBJECT || l_selected == MASTER_OBJECT )
+    if( objectType == TYPE_SELECTION_OBJECT )
     {
-        ( (SelectionObject*)m_pTreeWidget->GetItemData( l_treeId ) )->setName( event.GetLabel() );
+        CustomTreeItem *pTreeItem = (CustomTreeItem*) m_pTreeWidget->GetItemData( treeId );
+        
+        SelectionObject *pSelObject = m_pDatasetHelper->m_pSelectionTree->getObject( pTreeItem->getId() );
+        pSelObject->setName( event.GetLabel() );
     }
 }
 
@@ -1745,6 +1823,41 @@ int MainFrame::treeSelected( wxTreeItemId i_id )
     }
     return 0;
 }
+
+TreeObjectType MainFrame::treeSelectedNew( const wxTreeItemId itemId )
+{
+    if( !itemId.IsOk() )
+    {
+        return TYPE_INVALID;
+    }
+    
+    if( itemId == m_tSelectionObjectsId )
+    {
+        return TYPE_SELECTION_MASTER;
+    }
+    
+    if( itemId == m_tPointId )
+    {
+        return TYPE_POINTS_MASTER;
+    }
+    
+    wxTreeItemId parentId( m_pTreeWidget->GetItemParent( itemId ) );
+    
+    if( parentId.IsOk() && parentId == m_tPointId )
+    {
+        return TYPE_POINTS_OBJECT;
+    }
+    
+    CustomTreeItem *pTreeItem = (CustomTreeItem*) m_pTreeWidget->GetItemData( itemId );
+    
+    if( pTreeItem != NULL && m_pDatasetHelper->m_pSelectionTree->containsId( pTreeItem->getId() ) )
+    {
+        return TYPE_SELECTION_OBJECT;
+    }
+    
+    return TYPE_INVALID;
+}
+
 void MainFrame::onRotateZ( wxCommandEvent& event )
 {
     m_pDatasetHelper->m_theScene->m_isRotateZ = !m_pDatasetHelper->m_theScene->m_isRotateZ; 

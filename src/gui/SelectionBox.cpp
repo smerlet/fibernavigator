@@ -36,6 +36,7 @@ SelectionBox::SelectionBox( Vector i_center, Vector i_size, DatasetHelper* i_dat
 // i_datasetHelper          : The dataset Helper associated with this box.
 // i_anatomy                : The anatomy associated with this box.
 ///////////////////////////////////////////////////////////////////////////
+// TODO this should probably go the way of the dodo
 SelectionBox::SelectionBox( DatasetHelper* i_datasetHelper, Anatomy* i_anatomy ) :
    SelectionObject( Vector( 0.0f, 0.0f, 0.0f ), Vector( 0.0f, 0.0f, 0.0f ), i_datasetHelper )
 {

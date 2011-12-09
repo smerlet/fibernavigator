@@ -5,6 +5,7 @@
 #include "../misc/lic/FgeOffscreen.h"
 #include "MainFrame.h"
 #include "../dataset/Anatomy.h"
+#include "../gui/SelectionTree.h"
 #include "math.h"
 #include <list>
 #include <limits>
@@ -668,20 +669,18 @@ hitResult MainCanvas::pick( wxPoint click, bool isRuler)
      */
     if ( m_pDatasetHelper->m_showObjects )
     {
-        std::vector< std::vector< SelectionObject* > > l_selectionObjects = m_pDatasetHelper->getSelectionObjects();
-        for ( unsigned int i = 0; i < l_selectionObjects.size(); ++i )
+        SelectionTree::SelectionObjectVector selectionObjects = m_pDatasetHelper->m_pSelectionTree->getAllObjects();
+        
+        for ( unsigned int objIdx( 0 ); objIdx < selectionObjects.size(); ++objIdx )
         {
-            for ( unsigned int j = 0; j < l_selectionObjects[i].size(); ++j )
+            hitResult hr1 = selectionObjects[objIdx]->hitTest( ray );
+            if ( hr1.hit && !hr.hit )
             {
-                hitResult hr1 = l_selectionObjects[i][j]->hitTest( ray );
-                if ( hr1.hit && !hr.hit )
-                {
-                    hr = hr1;
-                }
-                else if ( hr1.hit && hr.hit && ( hr1.tmin < hr.tmin ) )
-                {
-                    hr = hr1;
-                }
+                hr = hr1;
+            }
+            else if ( hr1.hit && hr.hit && ( hr1.tmin < hr.tmin ) )
+            {
+                hr = hr1;
             }
         }
     }

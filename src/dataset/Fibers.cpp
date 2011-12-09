@@ -20,6 +20,8 @@
 
 #include "../misc/Fantom/FMatrix.h"
 
+#include "../gui/SelectionTree.h"
+
 // TODO replace by const
 #define LINEAR_GRADIENT_THRESHOLD 0.085f
 #define MIN_ALPHA_VALUE 0.017f
@@ -1734,17 +1736,15 @@ void Fibers::colorWithCurvature( float *pColorData )
 ///////////////////////////////////////////////////////////////////////////
 void Fibers::colorWithDistance( float *pColorData )
 {
-    SelectionObjectList selObjs =  m_dh->getSelectionObjects();
-    vector< SelectionObject* > simplifiedList;
+    SelectionTree::SelectionObjectVector selectionObjects = m_dh->m_pSelectionTree->getAllObjects();
 
-    for( unsigned int i = 0; i < selObjs.size(); ++i )
+    vector< SelectionObject* > simplifiedList;
+    
+    for( unsigned int objIdx( 0 ); objIdx < selectionObjects.size(); ++objIdx )
     {
-        for( unsigned int j = 0; j < selObjs[i].size(); ++j )
+        if( selectionObjects[objIdx]->IsUsedForDistanceColoring() )
         {
-            if( selObjs[i][j]->IsUsedForDistanceColoring() )
-            {
-                simplifiedList.push_back( selObjs[i][j] );
-            }
+            simplifiedList.push_back( selectionObjects[objIdx] );
         }
     }
 
@@ -1796,17 +1796,15 @@ void Fibers::colorWithDistance( float *pColorData )
 
 void Fibers::colorWithMinDistance( float *pColorData )
 {
-    SelectionObjectList selObjs =  m_dh->getSelectionObjects();
+    SelectionTree::SelectionObjectVector selectionObjects = m_dh->m_pSelectionTree->getAllObjects();
+    
     vector< SelectionObject* > simplifiedList;
 
-    for( unsigned int i = 0; i < selObjs.size(); ++i )
+    for( unsigned int objIdx( 0 ); objIdx < selectionObjects.size(); ++objIdx )
     {
-        for( unsigned int j = 0; j < selObjs[i].size(); ++j )
+        if( selectionObjects[objIdx]->IsUsedForDistanceColoring() )
         {
-            if( selObjs[i][j]->IsUsedForDistanceColoring() )
-            {
-                simplifiedList.push_back( selObjs[i][j] );
-            }
+            simplifiedList.push_back( selectionObjects[objIdx] );
         }
     }
 
@@ -2394,17 +2392,19 @@ void Fibers::resetLinesShown()
 
 void Fibers::updateLinesShown()
 {
-    vector< vector< SelectionObject * > > selectionObjects = m_dh->getSelectionObjects();
+    //vector< vector< SelectionObject * > > selectionObjects = m_dh->getSelectionObjects();
+    SelectionTree::SelectionObjectVector selectionObjects = m_dh->m_pSelectionTree->getAllObjects();
 
+    // TODO replace with assign.
     for( int i = 0; i < m_countLines; ++i )
     {
         m_selected[i] = 1;
     }
 
-    int activeCount = 0;
+    //int activeCount = 0;
 
     //First pass to make sure there is at least one intersection volume active;
-    for( unsigned int i = 0; i < selectionObjects.size(); ++i )
+    /*for( unsigned int i = 0; i < selectionObjects.size(); ++i )
     {
         if( selectionObjects[i][0]->getIsActive() )
         {
@@ -2418,6 +2418,15 @@ void Fibers::updateLinesShown()
                 }
             }
         }
+    }*/
+    int activeCount( 0 );
+    
+    for( unsigned int objIdx( 0 ); objIdx < selectionObjects.size(); ++objIdx)
+    {
+        if( selectionObjects[objIdx]->getIsActive() )
+        {
+            ++activeCount;
+        }
     }
 
     if( activeCount == 0 )
@@ -2426,7 +2435,7 @@ void Fibers::updateLinesShown()
     }
 
     // For all the master selection objects.
-    for( unsigned int i = 0; i < selectionObjects.size(); ++i )
+    /*for( unsigned int i = 0; i < selectionObjects.size(); ++i )
     {
         if( selectionObjects[i][0]->getIsActive() )
         {
@@ -2442,10 +2451,7 @@ void Fibers::updateLinesShown()
                 selectionObjects[i][0]->setIsDirty( false );
             }
 
-            for( int k = 0; k < m_countLines; ++k )
-            {
-                selectionObjects[i][0]->m_inBranch[k] = selectionObjects[i][0]->m_inBox[k];
-            }
+            selectionObjects[i][0]->m_inBranch = selectionObjects[i][0]->m_inBox;
 
             // For all its child box.
             for( unsigned int j = 1; j < selectionObjects[i].size(); ++j )
@@ -2526,9 +2532,9 @@ void Fibers::updateLinesShown()
 
             selectionObjects[i][0]->setColorChanged( false );
         }
-    }
+    }*/
 
-    resetLinesShown();
+    /*resetLinesShown();
     bool boxWasUpdated( false );
 
     for( unsigned int i = 0; i < selectionObjects.size(); ++i )
@@ -2542,23 +2548,24 @@ void Fibers::updateLinesShown()
         }
 
         boxWasUpdated = true;
-    }
+    }*/
+    m_selected = m_dh->m_pSelectionTree->getSelectedFibers( this );
 
     if( m_dh->m_fibersInverted )
     {
         for( int k = 0; k < m_countLines; ++k )
         {
-            m_selected[k] = ! m_selected[k];
+            m_selected[k] = !m_selected[k];
         }
     }
 
     // This is to update the information display in the fiber grid info and the mean fiber
-    if( boxWasUpdated && m_dh->m_lastSelectedObject != NULL )
+    /*if( boxWasUpdated && m_dh->m_lastSelectedObject != NULL )
     {
         m_dh->m_lastSelectedObject->SetFiberInfoGridValues();
         m_dh->m_lastSelectedObject->computeMeanFiber();
 
-    }
+    }*/
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -3256,10 +3263,14 @@ void Fibers::updateFibersFilters()
     {
         m_filtered[i] = !( ( i % maxSubSampling ) >= subSampling && m_length[i] >= min && m_length[i] <= max );
     }
-    //Update stats and mean fiber
-    m_dh->m_lastSelectedObject->SetFiberInfoGridValues();
-    m_dh->m_lastSelectedObject->computeMeanFiber();
-
+    
+    // Update stats and mean fiber
+    // TODO do this only when displaying the fibers stats
+    if( m_dh->m_lastSelectedObject != NULL )
+    {
+        m_dh->m_lastSelectedObject->SetFiberInfoGridValues();
+        m_dh->m_lastSelectedObject->computeMeanFiber();
+    }
 }
 
 vector< bool > Fibers::getFilteredFibers()

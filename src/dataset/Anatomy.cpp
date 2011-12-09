@@ -8,6 +8,7 @@
 
 #include "../gui/MainFrame.h"
 #include "../gui/SelectionObject.h"
+#include "../gui/SelectionTree.h"
 #include "../misc/nifti/nifti1_io.h"
 
 #include <wx/textfile.h>
@@ -883,7 +884,7 @@ void Anatomy::updatePropertiesSizer()
     
     m_pEqualize->Enable(    1 == m_bands );
     m_pBtnMinimize->Enable( m_dh->m_fibersLoaded );
-    m_pBtnCut->Enable(      m_dh->getSelectionObjects().size() > 0 );
+    m_pBtnCut->Enable(      m_dh->m_pSelectionTree->getAllObjects().size() > 0 );
 
     m_pBtnNewIsoSurface->Enable(    getType() <= OVERLAY );
     m_pBtnNewDistanceMap->Enable(   getType() <= OVERLAY );

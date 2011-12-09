@@ -134,6 +134,8 @@ private:
     void onActivateTreeItem                 ( wxTreeEvent&    event );
     void onTreeLabelEdit                    ( wxTreeEvent&    event );
     int  treeSelected                       ( wxTreeItemId    i_id  ); 
+
+    TreeObjectType treeSelectedNew          ( const wxTreeItemId itemId );
     
     // System functions
     void onSize                             ( wxSizeEvent&    event );

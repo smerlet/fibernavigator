@@ -21,6 +21,7 @@
 #include "../gui/MyListCtrl.h"
 #include "../gui/SelectionBox.h"
 #include "../gui/SelectionEllipsoid.h"
+#include "../gui/SelectionTree.h"
 
 #include "../misc/IsoSurface/CIsoSurface.h"
 #include "Surface.h"
@@ -143,6 +144,8 @@ DatasetHelper::DatasetHelper( MainFrame *mf ) :
     m_screenshotPath( _T( "" ) ),
     m_screenshotName( _T( "" ) ),
 
+    m_pSelectionTree( NULL ),
+
     m_lastSelectedPoint ( 0 ),
     m_lastSelectedObject( 0 ),
     m_boxAtCrosshair    ( 0 ),
@@ -153,6 +156,8 @@ DatasetHelper::DatasetHelper( MainFrame *mf ) :
     m_mainFrame( mf )
 {
     Matrix4fSetIdentity( &m_transform );
+    
+    m_pSelectionTree = new SelectionTree;
 }
 
 DatasetHelper::~DatasetHelper()
@@ -167,6 +172,12 @@ DatasetHelper::~DatasetHelper()
 
 	if ( m_shaderHelper )
         delete m_shaderHelper;
+    
+    if( m_pSelectionTree != NULL )
+    {
+        delete m_pSelectionTree;
+        m_pSelectionTree = NULL;
+    }
 
 	//Not causing Memory leaks for now!!! But should be deleted, if allocated.
 	//if ( m_boxAtCrosshair )
@@ -950,10 +961,11 @@ void DatasetHelper::deleteAllPoints()
 
 void DatasetHelper::updateAllSelectionObjects()
 {
-    std::vector< std::vector< SelectionObject* > > l_selectionObjects = getSelectionObjects();
-    for( unsigned int i = 0; i < l_selectionObjects.size(); ++i )
-        for( unsigned int j = 0; j < l_selectionObjects[i].size(); ++j )
-            l_selectionObjects[i][j]->setIsDirty( true );
+    SelectionTree::SelectionObjectVector selectionObjects = m_pSelectionTree->getAllObjects();
+    for( unsigned int objIdx( 0 ); objIdx < selectionObjects.size(); ++objIdx )
+    {
+        selectionObjects[objIdx]->setIsDirty( true );
+    }
 }
 
 

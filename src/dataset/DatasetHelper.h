@@ -46,11 +46,14 @@ class AnatomyHelper;
 class ShaderHelper;
 class SplinePoint;
 class SelectionObject;
+class SelectionTree;
 class Fibers;
 class TensorField;
 class Surface;
 
+// TODO to be removed
 typedef std::vector< std::vector< SelectionObject* > > SelectionObjectList;
+typedef std::vector< SelectionObject* > SelectionObjectVector;
 
 class DatasetHelper 
 {
@@ -261,6 +264,9 @@ public:
     wxString m_scnFileName;
     wxString m_screenshotPath;
     wxString m_screenshotName;
+    
+    // TODO place in the correct place
+    SelectionTree *m_pSelectionTree;
 
     /////////////////////////////////////////////////////////////////////////////////
     // pointers to often used objects

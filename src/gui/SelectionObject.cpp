@@ -18,6 +18,7 @@
 #include "../misc/IsoSurface/CIsoSurface.h"
 #include "../main.h"
 #include "../gui/MainFrame.h"
+#include "../gui/SelectionTree.h"
 #include <wx/textctrl.h>
 
 #include <iostream>
@@ -419,10 +420,11 @@ void SelectionObject::setColor( wxColour i_color )
 ///////////////////////////////////////////////////////////////////////////
 bool SelectionObject::isSelectionObject()
 {
-    if( m_objectType == BOX_TYPE || m_objectType == ELLIPSOID_TYPE )
+    // TODO REMOVE THIS SHOULD NEVER HAVE EXISTED
+    //if( m_objectType == BOX_TYPE || m_objectType == ELLIPSOID_TYPE )
         return true;
 
-    return false;
+    //return false;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -740,10 +742,49 @@ vector< vector< Vector > > SelectionObject::getSelectedFibersPoints(){
 
     m_datasetHelper->getFiberDataset(l_fibers);
     filteredFiber = l_fibers->getFilteredFibers();
-
-    for( unsigned int i = 0; i < m_inBranch.size(); ++i )
+    
+    vector< bool > branchToUse;
+    if( m_datasetHelper->m_pSelectionTree->getActiveChildrenObjectsCount( this ) > 0 
+        || m_datasetHelper->m_pSelectionTree->isRootObject( this ) )
     {
-        if( m_inBranch[i] && !filteredFiber[i] )
+        branchToUse = m_inBranch;
+    }
+    else
+    {
+        // Combine the parent's inBox with this one's to obtain the sub branch.
+        SelectionObject *pParentObj = m_datasetHelper->m_pSelectionTree->getParentObject( this );
+        
+        if( pParentObj != NULL )
+        {
+            branchToUse.assign( m_inBranch.size(), false );
+            bool parentIsNot( pParentObj->getIsNOT() );
+            bool currentIsNot( getIsNOT() );
+            
+            for( unsigned int fiberIdx( 0 ); fiberIdx < m_inBox.size(); ++fiberIdx )
+            {
+                if( !parentIsNot && !currentIsNot )
+                {
+                    branchToUse[ fiberIdx ] = pParentObj->m_inBox[ fiberIdx ] & m_inBox[ fiberIdx ];
+                }
+                else if( !parentIsNot && currentIsNot )
+                {
+                    branchToUse[ fiberIdx ] = pParentObj->m_inBox[ fiberIdx ] & !m_inBox[ fiberIdx ];
+                }
+                else if( parentIsNot && !currentIsNot )
+                {
+                    branchToUse[ fiberIdx ] = !pParentObj->m_inBox[ fiberIdx ] & m_inBox[ fiberIdx ];
+                }
+                else // parentIsNot && currentIsNot
+                {
+                    branchToUse[ fiberIdx ] = !pParentObj->m_inBox[ fiberIdx ] & !m_inBox[ fiberIdx ];
+                }
+            }
+        }
+    }
+
+    for( unsigned int i = 0; i < branchToUse.size(); ++i )
+    {
+        if( branchToUse[i] && !filteredFiber[i] )
         {
             getFiberCoordValues( i, l_currentFiberPoints );
 
@@ -1523,8 +1564,10 @@ void SelectionObject::draw()
     }
 
     // We only display those if the current box is the selected one and if we are supposed to display them.
-    if( m_isSelected )
+    if( m_isSelected && m_datasetHelper->m_fibersLoaded)
+    {
         drawFibersInfo();
+    }
     
     if( ! m_isVisible )
         return;
@@ -1603,7 +1646,7 @@ void SelectionObject::updateStatusBar()
 ///////////////////////////////////////////////////////////////////////////
 void SelectionObject::drawFibersInfo()
 {
-    if( ! m_isMaster )
+    /*if( ! m_isMaster )
     {
         wxTreeCtrl*      l_treeWidget   = m_datasetHelper->m_mainFrame->m_pTreeWidget;
         SelectionObject* l_masterObject = (SelectionObject*)( l_treeWidget->GetItemData( l_treeWidget->GetItemParent( m_treeId ) ) );
@@ -1619,7 +1662,7 @@ void SelectionObject::drawFibersInfo()
     drawCrossSections();
     drawDispersionCone();
 
-    glEnable( GL_DEPTH_TEST);
+    glEnable( GL_DEPTH_TEST);*/
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1810,33 +1853,30 @@ void SelectionObject::FlipNormals()
 ///////////////////////////////////////////////////////////////////////////
 void SelectionObject::SetFiberInfoGridValues()
 {
-    if( ! m_isMaster )
+    if( !m_ptoggleCalculatesFibersInfo->GetValue() )
     {
-        wxTreeCtrl*      l_treeWidget   = m_datasetHelper->m_mainFrame->m_pTreeWidget;
-        SelectionObject* l_masterObject = (SelectionObject*)( l_treeWidget->GetItemData( l_treeWidget->GetItemParent( m_treeId ) ) );        
-        l_masterObject->SetFiberInfoGridValues();
         return;
     }
-   if (m_ptoggleCalculatesFibersInfo->GetValue())
-    {
-        FibersInfoGridParams l_params;
-        calculateGridParams( l_params );
+    
+    SelectionObject *pObjToUse( this );
+    
+    FibersInfoGridParams l_params;
+    pObjToUse->calculateGridParams( l_params );
 
-        m_pgridfibersInfo->SetCellValue( 0,  0, wxString::Format( wxT( "%d" ), l_params.m_count              ) );
-        m_pgridfibersInfo->SetCellValue( 1,  0, wxString::Format( wxT( "%.2f" ), l_params.m_meanValue        ) );
-        m_pgridfibersInfo->SetCellValue( 2,  0, wxString::Format( wxT( "%.2f" ), l_params.m_meanLength       ) );
-        m_pgridfibersInfo->SetCellValue( 3,  0, wxString::Format( wxT( "%.2f" ), l_params.m_minLength        ) );
-        m_pgridfibersInfo->SetCellValue( 4,  0, wxString::Format( wxT( "%.2f" ), l_params.m_maxLength        ) );
-        //m_pgridfibersInfo->SetCellValue( 5,  0, wxString::Format( wxT( "%.2f" ), l_params.m_meanCrossSection ) );
-        //if ( l_params.m_minCrossSection > l_params.m_count )
-        //    m_pgridfibersInfo->SetCellValue( 6,  0, wxT( "INF") );
-        //else    
-        //    m_pgridfibersInfo->SetCellValue( 6,  0, wxString::Format( wxT( "%.2f" ), l_params.m_minCrossSection  ) );
-		  //    m_pgridfibersInfo->SetCellValue( 5,  0, wxString::Format( wxT( "%.2f" ), l_params.m_maxCrossSection  ) );
-        m_pgridfibersInfo->SetCellValue( 5,  0, wxString::Format( wxT( "%.5f" ), l_params.m_meanCurvature    ) );
-        m_pgridfibersInfo->SetCellValue( 6,  0, wxString::Format( wxT( "%.5f" ), l_params.m_meanTorsion      ) );
-        //m_pgridfibersInfo->SetCellValue( 10, 0, wxString::Format( wxT( "%.2f" ), l_params.m_dispersion       ) );
-    }
+    m_pgridfibersInfo->SetCellValue( 0,  0, wxString::Format( wxT( "%d" ), l_params.m_count              ) );
+    m_pgridfibersInfo->SetCellValue( 1,  0, wxString::Format( wxT( "%.2f" ), l_params.m_meanValue        ) );
+    m_pgridfibersInfo->SetCellValue( 2,  0, wxString::Format( wxT( "%.2f" ), l_params.m_meanLength       ) );
+    m_pgridfibersInfo->SetCellValue( 3,  0, wxString::Format( wxT( "%.2f" ), l_params.m_minLength        ) );
+    m_pgridfibersInfo->SetCellValue( 4,  0, wxString::Format( wxT( "%.2f" ), l_params.m_maxLength        ) );
+    //m_pgridfibersInfo->SetCellValue( 5,  0, wxString::Format( wxT( "%.2f" ), l_params.m_meanCrossSection ) );
+    //if ( l_params.m_minCrossSection > l_params.m_count )
+    //    m_pgridfibersInfo->SetCellValue( 6,  0, wxT( "INF") );
+    //else    
+    //    m_pgridfibersInfo->SetCellValue( 6,  0, wxString::Format( wxT( "%.2f" ), l_params.m_minCrossSection  ) );
+      //    m_pgridfibersInfo->SetCellValue( 5,  0, wxString::Format( wxT( "%.2f" ), l_params.m_maxCrossSection  ) );
+    m_pgridfibersInfo->SetCellValue( 5,  0, wxString::Format( wxT( "%.5f" ), l_params.m_meanCurvature    ) );
+    m_pgridfibersInfo->SetCellValue( 6,  0, wxString::Format( wxT( "%.5f" ), l_params.m_meanTorsion      ) );
+    //m_pgridfibersInfo->SetCellValue( 10, 0, wxString::Format( wxT( "%.2f" ), l_params.m_dispersion       ) );
 }
 
 void SelectionObject::createPropertiesSizer(PropertiesWindow *parent)

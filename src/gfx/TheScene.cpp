@@ -20,6 +20,8 @@
 #include "../gui/ArcBall.h"
 #include "../gui/MyListCtrl.h"
 #include "../gui/SelectionObject.h"
+#include "../gui/SelectionTree.h"
+#include "../gui/SelectionVOI.h"
 #include "../misc/IsoSurface/CIsoSurface.h"
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -529,7 +531,7 @@ void TheScene::renderMesh()
     m_pDatasetHelper->m_shaderHelper->m_pMeshShader->setUniFloat( "alpha_", 1.0 );
     m_pDatasetHelper->m_shaderHelper->m_pMeshShader->setUniInt  ( "useLic", false );
 
-    for( unsigned int i = 0; i < selectionObjects.size(); ++i )
+    /*for( unsigned int i = 0; i < selectionObjects.size(); ++i )
     {
         for( unsigned int j = 0; j < selectionObjects[i].size(); ++j )
         {
@@ -538,7 +540,7 @@ void TheScene::renderMesh()
                 selectionObjects[i][j]->drawIsoSurface();
             glPopAttrib();
         }
-    }
+    }*/
 
     //Render meshes
     for( int i = 0; i < m_pDatasetHelper->m_mainFrame->m_pListCtrl->GetItemCount(); ++i )
@@ -798,21 +800,72 @@ void TheScene::drawSphere( float xPos, float yPos, float zPos, float ray )
 ///////////////////////////////////////////////////////////////////////////
 void TheScene::drawSelectionObjects()
 {
-    std::vector< std::vector< SelectionObject* > > selectionObjects = m_pDatasetHelper->getSelectionObjects();
-    for ( unsigned int i = 0; i < selectionObjects.size(); ++i )
+    SelectionTree::SelectionObjectVector selectionObjects = m_pDatasetHelper->m_pSelectionTree->getAllObjects();
+    
+    // Draw selection objects that are not VOIs.
+    for( unsigned int objIdx( 0 ); objIdx < selectionObjects.size(); ++objIdx )
     {
-        for ( unsigned int j = 0; j < selectionObjects[i].size(); ++j )
+        SelectionVOI *pObjAsVOI = (SelectionVOI*) selectionObjects[objIdx];
+        
+        if( pObjAsVOI == NULL )
         {
             glPushAttrib( GL_ALL_ATTRIB_BITS );
 
-            selectionObjects[i][j]->draw();
+            selectionObjects[objIdx]->draw();
 
             glPopAttrib();
         }
     }
-
+    
+    // Setup to draw VOIs.
+    glPushAttrib( GL_ALL_ATTRIB_BITS );
+    
+    if( m_pDatasetHelper->m_lighting )
+    {
+        lightsOn();
+    }
+    
+    bindTextures();
+    
+    m_pDatasetHelper->m_shaderHelper->m_pMeshShader->bind();
+    m_pDatasetHelper->m_shaderHelper->setMeshShaderVars();
+    
+    if( m_pDatasetHelper->m_pointMode )
+        glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+    else
+        glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+    
+    glEnable( GL_BLEND );
+    glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
+    
+    m_pDatasetHelper->m_shaderHelper->m_pMeshShader->setUniInt  ( "showFS", true );
+    m_pDatasetHelper->m_shaderHelper->m_pMeshShader->setUniInt  ( "useTex", false );
+    m_pDatasetHelper->m_shaderHelper->m_pMeshShader->setUniFloat( "alpha_", 1.0 );
+    m_pDatasetHelper->m_shaderHelper->m_pMeshShader->setUniInt  ( "useLic", false );
+    
+    for( unsigned int objIdx( 0 ); objIdx < selectionObjects.size(); ++objIdx )
+    {
+        SelectionVOI *pObjAsVOI = (SelectionVOI*) selectionObjects[objIdx];
+        
+        if( pObjAsVOI != NULL )
+        {
+            selectionObjects[objIdx]->draw();
+        }
+    }
+    
+    m_pDatasetHelper->m_shaderHelper->m_pMeshShader->release();
+    
+    lightsOff();
+    
+    if( m_pDatasetHelper->GLError() )
+        m_pDatasetHelper->printGLError( wxT( "draw mesh" ) );
+    
+    glPopAttrib();
+ 
     if ( m_pDatasetHelper->GLError() )
+    {
         m_pDatasetHelper->printGLError( wxT( "draw selection objects" ) );
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////
