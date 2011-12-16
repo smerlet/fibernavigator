@@ -16,6 +16,7 @@ MenuBar::MenuBar()
 {
     m_menuFile = new wxMenu();
     m_itemLoad = m_menuFile->Append(wxID_ANY, wxT("Open\tCtrl-O"));
+    m_itemLoadFmriClusters = m_menuFile->Append(wxID_ANY, wxT("Open Fmri Clusters"));
     //m_itemReloadShader = m_menuFile->Append(wxID_ANY, wxT("Reload Shader"));
     m_itemSaveSCN = m_menuFile->Append(wxID_ANY, wxT("Save Current Scene\tCtrl-S"));
     m_itemSaveSelectedFibers = m_menuFile->Append(wxID_ANY, wxT("Save Selected Fibers"));
@@ -136,6 +137,7 @@ MenuBar::MenuBar()
 void MenuBar::initMenuBar( MainFrame *mf )
 {
     mf->Connect(m_itemLoad->GetId(), wxEVT_COMMAND_TOOL_CLICKED, wxCommandEventHandler(MainFrame::onLoad));
+    mf->Connect(m_itemLoadFmriClusters->GetId(), wxEVT_COMMAND_TOOL_CLICKED, wxCommandEventHandler(MainFrame::onLoadFmriClusters));
     //mf->Connect(m_itemReloadShader->GetId(), wxEVT_COMMAND_TOOL_CLICKED, wxCommandEventHandler(MainFrame::OnReloadShaders));
     mf->Connect(m_itemSaveSCN->GetId(), wxEVT_COMMAND_TOOL_CLICKED, wxCommandEventHandler(MainFrame::onSave));
     mf->Connect(m_itemSaveSelectedFibers->GetId(), wxEVT_COMMAND_TOOL_CLICKED, wxCommandEventHandler(MainFrame::onSaveFibers));

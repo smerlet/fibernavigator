@@ -71,6 +71,7 @@ public:
                const bool  i_showFS    = true, 
                const bool  i_useTex    = true, 
                const float i_alpha     = 1.0f );
+    bool loadFmriClusters();
     void finishLoading ( DatasetInfo* );
     bool loadScene     ( const wxString i_filename );
     bool loadTextFile  ( wxString* i_string, const wxString i_filename );

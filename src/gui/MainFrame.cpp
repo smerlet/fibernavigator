@@ -292,6 +292,18 @@ void MainFrame::onLoad( wxCommandEvent& WXUNUSED(event) )
     }
      refreshAllGLWidgets();
 }
+
+void MainFrame::onLoadFmriClusters( wxCommandEvent& WXUNUSED(event) )
+{
+    if( ! m_pDatasetHelper->loadFmriClusters() )
+    {
+        wxMessageBox( wxT( "ERROR\n" ) + m_pDatasetHelper->m_lastError, wxT( "" ), wxOK | wxICON_INFORMATION, NULL );
+        GetStatusBar()->SetStatusText( wxT( "ERROR" ), 1 );
+        GetStatusBar()->SetStatusText( m_pDatasetHelper->m_lastError, 2 );
+        return;
+    }
+    refreshAllGLWidgets();
+}
 //////////////////////////////////////////////////////////////////////////
 // This function will be called when someone click on the Load Datasets button.
 //////////////////////////////////////////////////////////////////////////

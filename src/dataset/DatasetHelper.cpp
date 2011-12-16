@@ -410,6 +410,75 @@ bool DatasetHelper::load( wxString i_fileName, int i_index, const float i_thresh
     return false;
 }
 
+bool DatasetHelper::loadFmriClusters()
+{
+    wxArrayString l_fileNames;
+    wxString l_caption          = wxT( "Choose a file" );
+	wxString l_wildcard         = wxT( "*.*|*.*|Nifti (*.nii)|*.nii*" );
+    wxString l_defaultDir       = wxEmptyString;
+    wxString l_defaultFileName  = wxEmptyString;
+    wxFileDialog dialog( m_mainFrame, l_caption, l_defaultDir, l_defaultFileName, l_wildcard, wxOPEN | wxFD_MULTIPLE );
+    //dialog.SetFilterIndex( i_index );
+    dialog.SetFilterIndex( 0 );
+    dialog.SetDirectory( m_lastPath );
+    if( dialog.ShowModal() == wxID_OK )
+    {
+        m_lastPath = dialog.GetDirectory();
+        dialog.GetPaths( l_fileNames );
+    }
+    else
+        return true;
+    
+    bool l_flag = true;
+    //const int numberSteps( 14 );
+    const int numberSteps( 1 );
+    for( int timeStep( 0 ); timeStep < numberSteps && l_flag; ++timeStep )
+    {
+        Anatomy *pTempAnat = new Anatomy( this );
+
+        if( pTempAnat->loadTimeStep( l_fileNames[0], timeStep ) )
+        {
+            finishLoading( pTempAnat );
+        }
+        else
+        {
+            l_flag = false;
+            delete pTempAnat;
+        }
+    }
+    
+    Anatomy *pTempAnat = new Anatomy( this );
+    pTempAnat->loadTimeStep( l_fileNames[0], 0, 0.91);
+    finishLoading(pTempAnat);
+    
+    pTempAnat = new Anatomy( this );
+    pTempAnat->loadTimeStep( l_fileNames[0], 0, 0.82);
+    finishLoading(pTempAnat);
+    
+    pTempAnat = new Anatomy( this );
+    pTempAnat->loadTimeStep( l_fileNames[0], 0, 0.99);
+    finishLoading(pTempAnat);
+    
+    /*for( size_t i = 0; i < l_fileNames.size(); ++i )
+    {
+        Anatomy *pTempAnat = new Anatomy( this );
+        // TODO iterate over all time steps.
+        if( pTempAnat->loadTimeStep( l_fileNames, 0 ) )
+        {
+            finishLoading( pTempAnat );
+        }
+        else
+        {
+            delete pTempAnat;
+        }
+        //if( ! load( l_fileNames[i], i_index ) && l_flag )
+        //    l_flag = false;
+    }*/
+    
+    //return l_flag;
+    return false;
+}
+
 void DatasetHelper::finishLoading( DatasetInfo* i_info )
 {
     m_guiBlocked = true;

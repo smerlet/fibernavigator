@@ -755,6 +755,180 @@ void Anatomy::saveNifti( wxString fileName )
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Missing the free in some cases.
+bool Anatomy::loadTimeStep( wxString fileName, const int timeStep, const float threshold )
+{
+    char *pHdrFile;
+    pHdrFile = (char*)malloc( fileName.length() + 1 );
+    strcpy( pHdrFile, (const char*)fileName.mb_str( wxConvUTF8 ) );
+    
+    nifti_image *pImage = nifti_image_read( pHdrFile, 0 );
+    if( ! pImage )
+    {
+        m_dh->m_lastError = wxT( "nifti file corrupt, cannot create nifti image from header" );
+        return false;
+    }
+#ifdef DEBUG
+    //nifti_1_header *l_tmphdr = nifti_read_header( l_hdrFile, 0, 0 );
+    //disp_nifti_1_header( "", l_tmphdr );
+#endif
+    m_columns   = pImage->dim[1]; 
+    m_rows      = pImage->dim[2]; 
+    m_frames    = pImage->dim[3]; 
+    
+    int nbClusters = pImage->dim[4];
+    if( timeStep >= nbClusters )
+    {
+        m_dh->m_lastError = wxT( "Cluster index is greater than number of time steps" );
+        return false;
+    }
+
+    m_dataType  = pImage->datatype;
+    
+    if( m_dh->m_anatomyLoaded )
+    {
+        if( m_rows != m_dh->m_rows || m_columns != m_dh->m_columns || m_frames != m_dh->m_frames )
+        {
+            m_dh->m_lastError = wxT( "dimensions of loaded files must be the same" );
+            return false;
+        }
+    }
+    
+    // Get the transformation to put the anatomy file in world space.
+    // We currently only use it when loading Mrtrix fibers.
+    m_dh->m_niftiTransform( 0, 0 ) = pImage->sto_xyz.m[0][0];
+    m_dh->m_niftiTransform( 0, 1 ) = pImage->sto_xyz.m[0][1];
+    m_dh->m_niftiTransform( 0, 2 ) = pImage->sto_xyz.m[0][2];
+    m_dh->m_niftiTransform( 0, 3 ) = pImage->sto_xyz.m[0][3];
+    m_dh->m_niftiTransform( 1, 0 ) = pImage->sto_xyz.m[1][0];
+    m_dh->m_niftiTransform( 1, 1 ) = pImage->sto_xyz.m[1][1];
+    m_dh->m_niftiTransform( 1, 2 ) = pImage->sto_xyz.m[1][2];
+    m_dh->m_niftiTransform( 1, 3 ) = pImage->sto_xyz.m[1][3];
+    m_dh->m_niftiTransform( 2, 0 ) = pImage->sto_xyz.m[2][0];
+    m_dh->m_niftiTransform( 2, 1 ) = pImage->sto_xyz.m[2][1];
+    m_dh->m_niftiTransform( 2, 2 ) = pImage->sto_xyz.m[2][2];
+    m_dh->m_niftiTransform( 2, 3 ) = pImage->sto_xyz.m[2][3];
+    m_dh->m_niftiTransform( 3, 0 ) = pImage->sto_xyz.m[3][0];
+    m_dh->m_niftiTransform( 3, 1 ) = pImage->sto_xyz.m[3][1];
+    m_dh->m_niftiTransform( 3, 2 ) = pImage->sto_xyz.m[3][2];
+    m_dh->m_niftiTransform( 3, 3 ) = pImage->sto_xyz.m[3][3];
+    
+    m_dh->m_xVoxel = pImage->dx;
+    m_dh->m_yVoxel = pImage->dy;
+    m_dh->m_zVoxel = pImage->dz;
+    
+    // TODO this
+    if( pImage->datatype != 16 )
+    {
+        m_dh->m_lastError = wxT( "Cluster file must be encoded in floats" );
+        return false;
+    }
+    else
+    {
+        m_type = OVERLAY;
+    }
+    
+    nifti_image *pFileData = nifti_image_read( pHdrFile, 1 );
+    if( !pFileData )
+    {
+        m_dh->m_lastError = wxT( "nifti file corrupt" );
+        return false;
+    }
+    
+    int datasetSize = pImage->dim[1] * pImage->dim[2] * pImage->dim[3];
+    
+    bool flag = false;
+    
+    switch( m_type )
+    {
+        case OVERLAY:
+        {
+            float* pData = (float*)pFileData->data;
+            
+            m_floatDataset.resize( datasetSize );
+            // TODO get number of different values
+            
+            float dataMax = 0.0f;
+            
+            for( int i(0); i < datasetSize; ++i )
+            {
+                //float dataVal = (float)pData[(timeStep * datasetSize) + i];
+                if( threshold <= -0.99f )
+                {
+                    m_floatDataset[i] = (float)pData[(timeStep * datasetSize) + i];
+                    dataMax = std::max( dataMax, m_floatDataset[i] );
+                }
+                else
+                {
+                    float dataVal = (float)pData[(timeStep * datasetSize) + i];
+                    
+                    if( dataVal >= threshold - 0.01f && dataVal <= threshold + 0.01f )
+                    {
+                        m_floatDataset[i] = (float)pData[(timeStep * datasetSize) + i];
+                        dataMax = std::max( dataMax, m_floatDataset[i] );
+                    }
+                    else
+                    {
+                        m_floatDataset[i] = 0;
+                    }
+                }
+                /*if( threshold != -1.0f && 
+                    (float)pData[(timeStep * datasetSize) + i] != threshold )
+                {
+                    m_floatDataset[i] = 0;
+                }
+                else if ( threshold == -1.0f ||
+                         ( threshold != -1.0f && (float)pData[(timeStep * datasetSize) + i] == threshold ) )
+                {
+                    m_floatDataset[i] = (float)pData[(timeStep * datasetSize) + i];
+                    dataMax = std::max( dataMax, m_floatDataset[i] );
+                }*/
+            }
+            
+            if( threshold <= -0.99f )
+            {
+                for( int i(0); i < datasetSize; ++i )
+                {
+                    m_floatDataset[i] = m_floatDataset[i] / dataMax;
+                }
+            }
+            
+            m_oldMax    = dataMax;
+            m_newMax    = 1.0;
+            flag        = true;
+        }
+            break;
+            
+        default:
+        {
+            m_dh->m_lastError = wxT( "unsuported file format" );
+            flag = false;
+            // Will not return now to make sure the pHdrFile pointer is freed.
+        }
+    }
+    
+    if( flag )
+    {
+        m_dh->m_rows            = m_rows;
+        m_dh->m_columns         = m_columns;
+        m_dh->m_frames          = m_frames;
+        m_dh->m_anatomyLoaded   = true;
+        
+        equalizeHistogram();
+    }
+    
+    nifti_image_free( pFileData );
+    pFileData = NULL;
+    
+    free(pHdrFile);
+    pHdrFile = NULL;
+    
+    m_isLoaded = flag;
+    
+    return flag;
+}
+
+//////////////////////////////////////////////////////////////////////////
 
 void Anatomy::createPropertiesSizer( PropertiesWindow *pParentWindow )
 {
