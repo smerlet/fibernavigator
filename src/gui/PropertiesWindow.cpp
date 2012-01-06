@@ -21,6 +21,13 @@ EVT_PAINT(      PropertiesWindow::OnPaint)
 EVT_SIZE(       PropertiesWindow::OnSize)
 END_EVENT_TABLE()
 
+// Anonymous namespace
+namespace {
+    int compareIntDecreasing( int *pFirst, int *pSecond )
+    {
+        return *pFirst <= *pSecond;
+    }
+}
 
 PropertiesWindow::PropertiesWindow( MainFrame *parent, wxWindowID id,
                     const wxPoint &pos, const wxSize &size )
@@ -327,15 +334,21 @@ void PropertiesWindow::OnNewVoiFromClusters( wxCommandEvent& WXUNUSED( event ) )
     {
         // Create the VOIs for each choice.
         wxArrayInt selectedIdx = clusterSelectionDiag.GetSelections();
+        selectedIdx.Sort( compareIntDecreasing );
         
         for( unsigned int idIdx( 0 ); idIdx < selectedIdx.GetCount(); ++idIdx )
         {
             // Get the value, and create the VOI.
             // Need the + 1 since the 0.0 value is not displayed but still in the vector.
-            // TODO give the voi a name based on its threshold
             float clusterValue = clustersValuesArray.at( selectedIdx.Item( idIdx ) + 1 );
             SelectionVOI *pSelVOI = new SelectionVOI( m_mainFrame->m_pDatasetHelper, pAnat, 
                                                       clusterValue, THRESHOLD_EQUAL );
+            
+            wxString convertedClusterVal;
+            convertedClusterVal << clusterValue;
+            wxString voiName( wxT( "[VOI] - [fMRI] ") + convertedClusterVal );
+            
+            pSelVOI->setName( voiName );
             
             AddSelectionObjectToSelectionTree( pSelVOI );
         }
