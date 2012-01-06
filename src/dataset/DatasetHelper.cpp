@@ -438,7 +438,9 @@ bool DatasetHelper::loadFmriClusters()
 
         if( pTempAnat->loadTimeStep( l_fileNames[0], timeStep ) )
         {
+            pTempAnat->setAnatType( TYPE_FMRI_CLUSTERS_MAP );
             finishLoading( pTempAnat );
+            pTempAnat->processAsFmriClusterMap( l_fileNames[0] );
         }
         else
         {
@@ -447,36 +449,7 @@ bool DatasetHelper::loadFmriClusters()
         }
     }
     
-    Anatomy *pTempAnat = new Anatomy( this );
-    pTempAnat->loadTimeStep( l_fileNames[0], 0, 0.91);
-    finishLoading(pTempAnat);
-    
-    pTempAnat = new Anatomy( this );
-    pTempAnat->loadTimeStep( l_fileNames[0], 0, 0.82);
-    finishLoading(pTempAnat);
-    
-    pTempAnat = new Anatomy( this );
-    pTempAnat->loadTimeStep( l_fileNames[0], 0, 0.99);
-    finishLoading(pTempAnat);
-    
-    /*for( size_t i = 0; i < l_fileNames.size(); ++i )
-    {
-        Anatomy *pTempAnat = new Anatomy( this );
-        // TODO iterate over all time steps.
-        if( pTempAnat->loadTimeStep( l_fileNames, 0 ) )
-        {
-            finishLoading( pTempAnat );
-        }
-        else
-        {
-            delete pTempAnat;
-        }
-        //if( ! load( l_fileNames[i], i_index ) && l_flag )
-        //    l_flag = false;
-    }*/
-    
-    //return l_flag;
-    return false;
+    return l_flag;
 }
 
 void DatasetHelper::finishLoading( DatasetInfo* i_info )

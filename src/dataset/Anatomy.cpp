@@ -15,6 +15,8 @@
 #include <GL/glew.h>
 #include <cassert>
 
+#include <set>
+
 #define MIN_HEADER_SIZE 348
 #define NII_HEADER_SIZE 352
 
@@ -24,7 +26,9 @@ Anatomy::Anatomy( DatasetHelper* pDatasetHelper )
   m_pRoi( NULL ),
   m_dataType( 2 ),
   m_pTensorField( NULL ),
-  m_useEqualizedDataset( false )
+  m_useEqualizedDataset( false ),
+  m_anatType( TYPE_BASIC ),
+  m_nbClusters( -1 )
 {
     m_bands = 1;
 }
@@ -36,7 +40,9 @@ Anatomy::Anatomy( DatasetHelper* pDatasetHelper,
   m_pRoi( NULL ),
   m_dataType( 2 ),
   m_pTensorField( NULL ),
-  m_useEqualizedDataset( false )
+  m_useEqualizedDataset( false ),
+  m_anatType( TYPE_BASIC ),
+  m_nbClusters( -1 )
 {
     m_columns       = m_dh->m_columns;
     m_frames        = m_dh->m_frames;
@@ -57,7 +63,9 @@ Anatomy::Anatomy( DatasetHelper* pDatasetHelper,
   m_pRoi( NULL ),
   m_dataType( 2 ),
   m_pTensorField( NULL ),
-  m_useEqualizedDataset( false )
+  m_useEqualizedDataset( false ),
+  m_anatType( TYPE_BASIC ),
+  m_nbClusters( -1 )
 {
     m_columns = m_dh->m_columns;
     m_frames  = m_dh->m_frames;
@@ -84,7 +92,9 @@ Anatomy::Anatomy( DatasetHelper* pDatasetHelper,
   m_pRoi( NULL ),
   m_dataType( 2 ),
   m_pTensorField( NULL ),
-  m_useEqualizedDataset( false )
+  m_useEqualizedDataset( false ),
+  m_anatType( TYPE_BASIC ),
+  m_nbClusters( -1 )
 {
     if(type == RGB)
     {
@@ -758,6 +768,13 @@ void Anatomy::saveNifti( wxString fileName )
 // Missing the free in some cases.
 bool Anatomy::loadTimeStep( wxString fileName, const int timeStep, const float threshold )
 {
+    m_fullPath = fileName;
+#ifdef __WXMSW__
+    m_name = fileName.AfterLast( '\\' );
+#else
+    m_name = fileName.AfterLast( '/' );
+#endif
+    
     char *pHdrFile;
     pHdrFile = (char*)malloc( fileName.length() + 1 );
     strcpy( pHdrFile, (const char*)fileName.mb_str( wxConvUTF8 ) );
@@ -776,10 +793,10 @@ bool Anatomy::loadTimeStep( wxString fileName, const int timeStep, const float t
     m_rows      = pImage->dim[2]; 
     m_frames    = pImage->dim[3]; 
     
-    int nbClusters = pImage->dim[4];
-    if( timeStep >= nbClusters )
+    // Check the index versus the number of available time steps.
+    if( timeStep >= pImage->dim[4] )
     {
-        m_dh->m_lastError = wxT( "Cluster index is greater than number of time steps" );
+        m_dh->m_lastError = wxT( "Time step index is greater than number of available time steps" );
         return false;
     }
 
@@ -930,6 +947,34 @@ bool Anatomy::loadTimeStep( wxString fileName, const int timeStep, const float t
 
 //////////////////////////////////////////////////////////////////////////
 
+void Anatomy::processAsFmriClusterMap( wxString fileName )
+{
+    bool continueProcessing( true );
+    char *pHdrFile;
+    pHdrFile = (char*)malloc( fileName.length() + 1 );
+    strcpy( pHdrFile, (const char*)fileName.mb_str( wxConvUTF8 ) );
+    
+    nifti_image *pImage = nifti_image_read( pHdrFile, 0 );
+    if( ! pImage )
+    {
+        continueProcessing = false;
+        m_dh->m_lastError = wxT( "nifti file corrupt, cannot create nifti image from header" );
+    }
+    
+    m_nbClusters = pImage->dim[4];
+    
+    m_differentValues.clear();
+    m_differentValues.insert( m_floatDataset.begin(), m_floatDataset.end() );
+
+    nifti_image_free( pImage );
+    pImage = NULL;
+    
+    free( pHdrFile );
+    pHdrFile = NULL;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 void Anatomy::createPropertiesSizer( PropertiesWindow *pParentWindow )
 {
     DatasetInfo::createPropertiesSizer(pParentWindow);
@@ -964,18 +1009,25 @@ void Anatomy::createPropertiesSizer( PropertiesWindow *pParentWindow )
     m_pBtnNewIsoSurface  =   new wxButton( pParentWindow, wxID_ANY, wxT("New Iso Surface"),    wxDefaultPosition, wxSize(140, -1) );
     m_pBtnNewOffsetSurface = new wxButton( pParentWindow, wxID_ANY, wxT("New Offset Surface"), wxDefaultPosition, wxSize(140, -1) );
     m_pBtnNewVOI =           new wxButton( pParentWindow, wxID_ANY, wxT("New VOI"),            wxDefaultPosition, wxSize(140, -1) );
+    m_pBtnNewFmriVOI =       new wxButton( pParentWindow, wxID_ANY, wxT("New VOI from fMRI clusters"), wxDefaultPosition, wxSize(140, -1) );
 
     m_propertiesSizer->Add( m_pEqualize,            0, wxALIGN_CENTER );
     m_propertiesSizer->Add( m_pBtnNewDistanceMap,   0, wxALIGN_CENTER );
     m_propertiesSizer->Add( m_pBtnNewIsoSurface,    0, wxALIGN_CENTER );
     m_propertiesSizer->Add( m_pBtnNewOffsetSurface, 0, wxALIGN_CENTER );
     m_propertiesSizer->Add( m_pBtnNewVOI,           0, wxALIGN_CENTER );
+    
+    if( getAnatType() == TYPE_FMRI_CLUSTERS_MAP )
+    {
+        m_propertiesSizer->Add( m_pBtnNewFmriVOI,   0, wxALIGN_CENTER );
+    }
 
     pParentWindow->Connect( m_pEqualize->GetId(),             wxEVT_COMMAND_TOGGLEBUTTON_CLICKED,  wxEventHandler(PropertiesWindow::OnEqualizeDataset) );
     pParentWindow->Connect( m_pBtnNewIsoSurface->GetId(),    wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler(PropertiesWindow::OnNewIsoSurface) );
     pParentWindow->Connect( m_pBtnNewDistanceMap->GetId(),   wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler(PropertiesWindow::OnNewDistanceMap) );
     pParentWindow->Connect( m_pBtnNewOffsetSurface->GetId(), wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler(PropertiesWindow::OnNewOffsetSurface) );
     pParentWindow->Connect( m_pBtnNewVOI->GetId(),           wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler(PropertiesWindow::OnNewVoiFromOverlay) );
+    pParentWindow->Connect( m_pBtnNewFmriVOI->GetId(),       wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler(PropertiesWindow::OnNewVoiFromClusters) );
 
     m_pToggleSegment = new wxToggleButton( pParentWindow, wxID_ANY,wxT("Floodfill"), wxDefaultPosition, wxSize(140, -1) );
 
@@ -1065,6 +1117,15 @@ void Anatomy::updatePropertiesSizer()
     m_pBtnNewOffsetSurface->Enable( getType() <= OVERLAY );
 
     m_pBtnNewVOI->Enable(   getType() <= OVERLAY );
+    if( getAnatType() == TYPE_FMRI_CLUSTERS_MAP )
+    {
+        m_pBtnNewFmriVOI->Enable( true );
+        m_pBtnNewFmriVOI->Show( true );
+    }
+    else
+    {
+        m_pBtnNewFmriVOI->Hide();
+    }
  
     //m_pBtnGraphCut->Enable( m_dh->graphcutReady() );
     

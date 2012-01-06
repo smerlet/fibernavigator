@@ -10,6 +10,7 @@
 #include "../dataset/SplinePoint.h"
 #include "../dataset/Surface.h"
 #include "../dataset/Tensors.h"
+#include "../gui/SelectionObject.h"
 #include "../gui/SelectionVOI.h"
 #include "../misc/IsoSurface/CIsoSurface.h"
 
@@ -249,28 +250,20 @@ void PropertiesWindow::OnNewDistanceMap (wxCommandEvent& WXUNUSED(event))
 
 void PropertiesWindow::OnNewVoiFromOverlay( wxCommandEvent& WXUNUSED(event) )
 {
-    wxTreeItemId     l_treeObjectId     = m_mainFrame->m_tSelectionObjectsId;
-    SelectionObject* l_selectionObject  = NULL;
-    Anatomy*         l_anatomy          = NULL;
-
-    if (m_mainFrame->m_pDatasetHelper->m_lastSelectedObject !=NULL)
-    {
-        l_treeObjectId = m_mainFrame->m_pDatasetHelper->m_lastSelectedObject->GetId();
-    }
+    SelectionObject *pSelectionObject  = NULL;
+    Anatomy         *pAnatomy          = NULL;
 
     if(m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1)
     {
         if ( ((DatasetInfo*)m_mainFrame->m_pCurrentSceneObject)->getType() < RGB)
         {
-            l_anatomy = (Anatomy*)m_mainFrame->m_pCurrentSceneObject;
-            float trs = l_anatomy->getThreshold();
+            pAnatomy = (Anatomy*)m_mainFrame->m_pCurrentSceneObject;
+            float trs = pAnatomy->getThreshold();
             if( trs == 0.0 )
                 trs = 0.01f;
 
-            //l_selectionObject = new SelectionBox( m_mainFrame->m_pDatasetHelper, l_anatomy );
-            l_selectionObject = new SelectionVOI( m_mainFrame->m_pDatasetHelper, l_anatomy, 
+            pSelectionObject = new SelectionVOI( m_mainFrame->m_pDatasetHelper, pAnatomy, 
                                                   trs, THRESHOLD_GREATER_EQUAL );
-            //l_selectionObject->setThreshold( trs );
         }
         else
         {
@@ -281,43 +274,75 @@ void PropertiesWindow::OnNewVoiFromOverlay( wxCommandEvent& WXUNUSED(event) )
     {
         return;
     }
-    
-    wxTreeItemId l_newSelectionObjectId;
-    
-    if( m_mainFrame->m_pDatasetHelper->m_pSelectionTree->isEmpty() )
-    {
-        l_selectionObject->setIsMaster( true );
-        int rootId = m_mainFrame->m_pDatasetHelper->m_pSelectionTree->setRoot( l_selectionObject );
-        
-        CustomTreeItem *pTreeItem = new CustomTreeItem( rootId );
-        l_newSelectionObjectId = m_mainFrame->m_pTreeWidget->AppendItem( m_mainFrame->m_tSelectionObjectsId, l_selectionObject->getName(), 0, -1, pTreeItem );
-        
-        m_mainFrame->m_pTreeWidget->SetItemBackgroundColour( l_newSelectionObjectId, *wxCYAN );
-    }
-    else
-    {
-        CustomTreeItem *pItem = (CustomTreeItem*) m_mainFrame->m_pTreeWidget->GetItemData( l_treeObjectId );
-        
-        int parentId = pItem->getId();
-        
-        int childId = m_mainFrame->m_pDatasetHelper->m_pSelectionTree->addChildrenObject( parentId,  l_selectionObject );
-        
-        CustomTreeItem *pTreeItem = new CustomTreeItem( childId );
-        l_newSelectionObjectId = m_mainFrame->m_pTreeWidget->AppendItem( l_treeObjectId, l_selectionObject->getName(), 0, -1, pTreeItem );
-        
-        m_mainFrame->m_pTreeWidget->SetItemBackgroundColour( l_newSelectionObjectId, *wxGREEN );
-    }
-    
-    l_selectionObject->setTreeId( l_newSelectionObjectId );
-    m_mainFrame->m_pTreeWidget->EnsureVisible( l_newSelectionObjectId );
-    m_mainFrame->m_pTreeWidget->SetItemImage( l_newSelectionObjectId, l_selectionObject->getIcon() );
-    
-    //l_anatomy->m_pRoi = l_selectionObject;
 
-    m_mainFrame->m_pDatasetHelper->m_selBoxChanged = true;
+    AddSelectionObjectToSelectionTree( pSelectionObject );
+
     m_mainFrame->refreshAllGLWidgets();
 }
 
+void PropertiesWindow::OnNewVoiFromClusters( wxCommandEvent& WXUNUSED( event ) )
+{
+    // Get the anatomy
+    Anatomy *pAnat( NULL );
+    
+    if( m_mainFrame->m_currentListItem != -1 )
+    {
+        DatasetInfo* pInfo = (DatasetInfo*)m_mainFrame->m_pListCtrl->GetItemData( m_mainFrame->m_currentListItem );
+        if ( pInfo->getType() < RGB )
+        {
+            pAnat = (Anatomy*)pInfo;
+            if( pAnat->getAnatType() != TYPE_FMRI_CLUSTERS_MAP )
+            {
+                return;
+            }
+        }
+        else
+        {
+            return;
+        }
+    }
+    else
+    {
+        return;
+    }
+            
+    wxArrayString choices;
+    set< float > clustersValues( pAnat->getValuesSet() );
+    vector< float > clustersValuesArray( clustersValues.begin(), clustersValues.end() );
+    
+    for( set< float >::const_iterator valIt( clustersValues.begin() ); valIt != clustersValues.end(); ++valIt )
+    {
+        // Do not display the 0.0 value, since it does not represent a cluster.
+        if( *valIt != 0.0f )
+        {
+            choices.Add( wxString::Format( wxT("%4f"), *valIt ) );
+        }
+    }
+
+    wxMultiChoiceDialog clusterSelectionDiag( 0, wxT( "Please select the clusters for which you want to create the VOIs." ), wxT( "Clusters selection" ), choices );
+
+    int returnValue = clusterSelectionDiag.ShowModal();
+    
+    if( returnValue == wxID_OK )
+    {
+        // Create the VOIs for each choice.
+        wxArrayInt selectedIdx = clusterSelectionDiag.GetSelections();
+        
+        for( unsigned int idIdx( 0 ); idIdx < selectedIdx.GetCount(); ++idIdx )
+        {
+            // Get the value, and create the VOI.
+            // Need the + 1 since the 0.0 value is not displayed but still in the vector.
+            // TODO give the voi a name based on its threshold
+            float clusterValue = clustersValuesArray.at( selectedIdx.Item( idIdx ) + 1 );
+            SelectionVOI *pSelVOI = new SelectionVOI( m_mainFrame->m_pDatasetHelper, pAnat, 
+                                                      clusterValue, THRESHOLD_EQUAL );
+            
+            AddSelectionObjectToSelectionTree( pSelVOI );
+        }
+    }
+    
+    m_mainFrame->refreshAllGLWidgets();
+}
 
 void PropertiesWindow::OnSegment(wxCommandEvent& WXUNUSED(event))
 {
@@ -1335,4 +1360,42 @@ void PropertiesWindow::OnRecalcMainDir( wxCommandEvent& WXUNUSED(event) )
                     ((ODFs*)m_mainFrame->m_currentSceneObject)->mainDirections[currentIdx] = ((ODFs*)m_mainFrame->m_currentSceneObject)->getODFmaxNotNorm(((ODFs*)m_mainFrame->m_currentSceneObject)->getCoeffs().at(currentIdx),
                     ((ODFs*)m_mainFrame->m_currentSceneObject)->getShMatrix()[NB_OF_LOD - 1], ((ODFs*)m_mainFrame->m_currentSceneObject)->getPhiTheta()[NB_OF_LOD - 1],((ODFs*)m_mainFrame->m_currentSceneObject)->m_axisThreshold,((ODFs*)m_mainFrame->m_currentSceneObject)->angle,((ODFs*)m_mainFrame->m_currentSceneObject)->m_nbors);
             }*/
+}
+
+void PropertiesWindow::AddSelectionObjectToSelectionTree( SelectionObject *pSelObj )
+{
+    wxTreeItemId treeObjectId = m_mainFrame->m_pTreeWidget->GetSelection();
+    
+    wxTreeItemId newSelectionObjectId;
+    
+    if( m_mainFrame->m_pDatasetHelper->m_pSelectionTree->isEmpty() )
+    {
+        pSelObj->setIsMaster( true );
+        int rootId = m_mainFrame->m_pDatasetHelper->m_pSelectionTree->setRoot( pSelObj );
+        
+        CustomTreeItem *pTreeItem = new CustomTreeItem( rootId );
+        newSelectionObjectId = m_mainFrame->m_pTreeWidget->AppendItem( m_mainFrame->m_tSelectionObjectsId, pSelObj->getName(), 0, -1, pTreeItem );
+        
+        m_mainFrame->m_pTreeWidget->SetItemBackgroundColour( newSelectionObjectId, *wxCYAN );
+    }
+    else
+    {
+        CustomTreeItem *pItem = (CustomTreeItem*) m_mainFrame->m_pTreeWidget->GetItemData( treeObjectId );
+        
+        int parentId = pItem->getId();
+        
+        int childId = m_mainFrame->m_pDatasetHelper->m_pSelectionTree->addChildrenObject( parentId,  pSelObj );
+        
+        CustomTreeItem *pTreeItem = new CustomTreeItem( childId );
+        newSelectionObjectId = m_mainFrame->m_pTreeWidget->AppendItem( treeObjectId, pSelObj->getName(), 0, -1, pTreeItem );
+        
+        m_mainFrame->m_pTreeWidget->SetItemBackgroundColour( newSelectionObjectId, *wxGREEN );
+    }
+    
+    pSelObj->setTreeId( newSelectionObjectId );
+    m_mainFrame->m_pTreeWidget->EnsureVisible( newSelectionObjectId );
+    m_mainFrame->m_pTreeWidget->SetItemImage( newSelectionObjectId, pSelObj->getIcon() );
+    m_mainFrame->m_pTreeWidget->SelectItem( newSelectionObjectId, true );
+    
+    m_mainFrame->m_pDatasetHelper->m_selBoxChanged = true;
 }

@@ -10,7 +10,9 @@
 #include "Surface.h"
 #include "../misc/lic/TensorField.h"
 
+#include <set>
 #include <vector>
+using std::set;
 
 class SelectionObject;
 class MainFrame;
@@ -65,6 +67,13 @@ public:
     void setDataType( const int type) { m_dataType = type; }
     int  getDataType()                { return m_dataType; }
     
+    void        setAnatType( const AnatomyType type ) { m_anatType = type; }
+    AnatomyType getAnatType()                         { return m_anatType; }
+    
+    void processAsFmriClusterMap( wxString fileName );
+    
+    set< float > getValuesSet() { return m_differentValues; }
+    
     virtual void createPropertiesSizer( PropertiesWindow *pParentWindow );
     virtual void updatePropertiesSizer();
     
@@ -94,6 +103,7 @@ private:
     wxButton        *m_pBtnNewDistanceMap;
     wxButton        *m_pBtnNewOffsetSurface;
     wxButton        *m_pBtnNewVOI;
+    wxButton        *m_pBtnNewFmriVOI;
     wxToggleButton  *m_pToggleSegment;
     wxToggleButton  *m_pEqualize;
     wxRadioButton   *m_pRadioBtnFlood;
@@ -126,6 +136,10 @@ private:
     int                     m_dataType;
     TensorField             *m_pTensorField;
     bool                    m_useEqualizedDataset;
+    
+    AnatomyType m_anatType;
+    int m_nbClusters;
+    set< float > m_differentValues;
 };
 
 #endif /* ANATOMY_H_ */

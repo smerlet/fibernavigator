@@ -2,7 +2,8 @@
 
 #include "SelectionVOI.h"
 
-#include "../misc/IsoSurface/CIsoSurface.h"
+//#include "../misc/IsoSurface/CIsoSurface.h"
+#include "../misc/IsoSurface/CBoolIsoSurface.h"
 
 #include <algorithm>
 #include <functional>
@@ -70,9 +71,11 @@ SelectionVOI::SelectionVOI( DatasetHelper *pDH, Anatomy *pSourceAnatomy, const f
 
     }
 
-    m_isosurface    = new CIsoSurface( m_datasetHelper, pSourceAnatomy );
-    m_isosurface->setThreshold( threshold );
-    m_isosurface->GenerateWithThreshold();
+    //m_isosurface    = new CIsoSurface( m_datasetHelper, pSourceAnatomy );
+    m_pIsoSurface = new CBoolIsoSurface( m_datasetHelper, m_includedVoxels );
+    //m_isosurface->setThreshold( threshold );
+    //m_isosurface->GenerateWithThreshold();
+    m_pIsoSurface->GenerateSurface();
     
     wxString mystring(wxT("[VOI] - ") + pSourceAnatomy->getName());
     m_name          =  mystring;
@@ -142,7 +145,8 @@ void SelectionVOI::drawObject( GLfloat * pColor )
     // For the moment a selection VOI will always be red.
     glColor4f( 1.0f, 0.0f, 0.0f, pColor[3] );
     
-    m_isosurface->draw();
+    //m_isosurface->draw();
+    m_pIsoSurface->draw();
     /*glColor4f( i_color[0], i_color[1], i_color[2], i_color[3] );
     
     glDepthMask(GL_FALSE);
@@ -349,11 +353,12 @@ void SelectionVOI::objectUpdate()
     m_zRadius = ( m_maxZ - m_minZ ) / 2.0f;*/
 }
 
+// TODO CHECK
 bool SelectionVOI::isPointInside( const float xPos, const float yPos, const float zPos ) const
 {
-    unsigned int xVoxelCoord( static_cast< unsigned int >( xPos / m_datasetHelper->m_xVoxel ) );
-    unsigned int yVoxelCoord( static_cast< unsigned int >( yPos / m_datasetHelper->m_yVoxel ) );
-    unsigned int zVoxelCoord( static_cast< unsigned int >( zPos / m_datasetHelper->m_zVoxel ) );
+    unsigned int xVoxelCoord( static_cast< unsigned int >( ( xPos / m_datasetHelper->m_xVoxel ) + 0.5f ) );
+    unsigned int yVoxelCoord( static_cast< unsigned int >( ( yPos / m_datasetHelper->m_yVoxel ) + 0.5f ) );
+    unsigned int zVoxelCoord( static_cast< unsigned int >( ( zPos / m_datasetHelper->m_zVoxel ) + 0.5f ) );
     
     unsigned int dataCoord( zVoxelCoord * m_nbCols * m_nbRows + yVoxelCoord * m_nbCols + xVoxelCoord );
     
@@ -362,6 +367,6 @@ bool SelectionVOI::isPointInside( const float xPos, const float yPos, const floa
 
 SelectionVOI::~SelectionVOI()
 {
-    delete m_isosurface;
-    m_isosurface = NULL;
+    delete m_pIsoSurface;
+    m_pIsoSurface = NULL;
 }

@@ -11,6 +11,8 @@
 #include <vector>
 using std::vector;
 
+class CBoolIsoSurface;
+
 class SelectionVOI : public SelectionObject
 {
 public:
@@ -40,6 +42,8 @@ private:
     unsigned int m_nbRows;
     unsigned int m_nbCols;
     unsigned int m_nbFrames;
+    
+    CBoolIsoSurface *m_pIsoSurface;
 };
 
 #endif // SELECTIONVOI_H_

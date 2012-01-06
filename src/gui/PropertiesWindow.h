@@ -18,6 +18,8 @@
 
 #include "../misc/Algorithms/Helper.h"
 
+class SelectionObject;
+
 class MainFrame;
 class PropertiesWindow: public wxScrolledWindow
 {
@@ -53,6 +55,7 @@ public:
     void OnNewOffsetSurface                 ( wxCommandEvent& event );
     void OnNewDistanceMap                   ( wxCommandEvent& event );
     void OnNewVoiFromOverlay                ( wxCommandEvent& event );
+    void OnNewVoiFromClusters               ( wxCommandEvent& event );
     void OnNewIsoSurface                    ( wxCommandEvent& event ); 
 
     void OnSegment                          ( wxCommandEvent& event );
@@ -140,6 +143,8 @@ public:
     MainFrame *m_mainFrame;
 
 private:
+    void AddSelectionObjectToSelectionTree( SelectionObject *pSelObj );
+    
     wxSizer *propertiesSizer;
     PropertiesWindow(wxWindow *parent, wxWindowID id, const wxPoint &pos, const wxSize &size );
     DECLARE_DYNAMIC_CLASS(PropertiesWindow)
