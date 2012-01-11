@@ -62,7 +62,7 @@ public:
     bool loadNifti( wxString fileName );
     void saveNifti( wxString fileName );
     
-    bool loadTimeStep( wxString fileName, const int timeStep, const float threshold = -1.0 );
+    bool loadTimeStep( wxString fileName, const int timeStep );
 
     void setDataType( const int type) { m_dataType = type; }
     int  getDataType()                { return m_dataType; }

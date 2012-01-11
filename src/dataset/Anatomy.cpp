@@ -766,7 +766,7 @@ void Anatomy::saveNifti( wxString fileName )
 
 //////////////////////////////////////////////////////////////////////////
 // Missing the free in some cases.
-bool Anatomy::loadTimeStep( wxString fileName, const int timeStep, const float threshold )
+bool Anatomy::loadTimeStep( wxString fileName, const int timeStep )
 {
     m_fullPath = fileName;
 #ifdef __WXMSW__
@@ -834,15 +834,21 @@ bool Anatomy::loadTimeStep( wxString fileName, const int timeStep, const float t
     m_dh->m_yVoxel = pImage->dy;
     m_dh->m_zVoxel = pImage->dz;
     
-    // TODO this
-    if( pImage->datatype != 16 )
+    if( m_dataType == 2 )
     {
-        m_dh->m_lastError = wxT( "Cluster file must be encoded in floats" );
-        return false;
+        m_type = HEAD_BYTE;
+    }
+    else if( m_dataType == 4 )
+    {
+        m_type = HEAD_SHORT;
+    }
+    else if( m_dataType == 16 )
+    {
+        m_type = OVERLAY;
     }
     else
     {
-        m_type = OVERLAY;
+        m_type = NOT_INITIALIZED;
     }
     
     nifti_image *pFileData = nifti_image_read( pHdrFile, 1 );
@@ -856,65 +862,66 @@ bool Anatomy::loadTimeStep( wxString fileName, const int timeStep, const float t
     
     bool flag = false;
     
+    m_floatDataset.resize ( datasetSize );
     switch( m_type )
     {
-        case OVERLAY:
+        case HEAD_BYTE:
         {
-            float* pData = (float*)pFileData->data;
-            
-            m_floatDataset.resize( datasetSize );
-            // TODO get number of different values
-            
-            float dataMax = 0.0f;
+            unsigned char* pData = (unsigned char*)pFileData->data;
             
             for( int i(0); i < datasetSize; ++i )
             {
-                //float dataVal = (float)pData[(timeStep * datasetSize) + i];
-                if( threshold <= -0.99f )
-                {
-                    m_floatDataset[i] = (float)pData[(timeStep * datasetSize) + i];
-                    dataMax = std::max( dataMax, m_floatDataset[i] );
-                }
-                else
-                {
-                    float dataVal = (float)pData[(timeStep * datasetSize) + i];
-                    
-                    if( dataVal >= threshold - 0.01f && dataVal <= threshold + 0.01f )
-                    {
-                        m_floatDataset[i] = (float)pData[(timeStep * datasetSize) + i];
-                        dataMax = std::max( dataMax, m_floatDataset[i] );
-                    }
-                    else
-                    {
-                        m_floatDataset[i] = 0;
-                    }
-                }
-                /*if( threshold != -1.0f && 
-                    (float)pData[(timeStep * datasetSize) + i] != threshold )
-                {
-                    m_floatDataset[i] = 0;
-                }
-                else if ( threshold == -1.0f ||
-                         ( threshold != -1.0f && (float)pData[(timeStep * datasetSize) + i] == threshold ) )
-                {
-                    m_floatDataset[i] = (float)pData[(timeStep * datasetSize) + i];
-                    dataMax = std::max( dataMax, m_floatDataset[i] );
-                }*/
+                m_floatDataset[i] = (float)pData[(timeStep * datasetSize) + i] / 255.0;
             }
             
-            if( threshold <= -0.99f )
+            flag = true;
+            m_oldMax = 255;            
+        }
+        break;
+            
+        case HEAD_SHORT:
+        {
+            short int* pData = (short int*)pFileData->data;
+            short int dataMax( 0 );
+            
+            for( int i(0); i < datasetSize; ++i )
             {
-                for( int i(0); i < datasetSize; ++i )
-                {
-                    m_floatDataset[i] = m_floatDataset[i] / dataMax;
-                }
+                dataMax = std::max( dataMax, pData[(timeStep * datasetSize) + i] );
+            }
+            
+            for( int i(0); i < datasetSize; ++i )
+            {
+                m_floatDataset[i] = (float)pData[(timeStep * datasetSize) + i] / (float)dataMax;
             }
             
             m_oldMax    = dataMax;
             m_newMax    = 1.0;
             flag        = true;
         }
-            break;
+        break;
+            
+        case OVERLAY:
+        {
+            float* pData = (float*)pFileData->data;
+            
+            float dataMax( 0.0f );
+            
+            for( int i(0); i < datasetSize; ++i )
+            {
+                m_floatDataset[i] = (float)pData[(timeStep * datasetSize) + i];
+                dataMax = std::max( dataMax, m_floatDataset[i] );
+            }
+            
+            for( int i(0); i < datasetSize; ++i )
+            {
+                m_floatDataset[i] = m_floatDataset[i] / dataMax;
+            }
+            
+            m_oldMax    = dataMax;
+            m_newMax    = 1.0;
+            flag        = true;
+        }
+        break;
             
         default:
         {
@@ -923,7 +930,7 @@ bool Anatomy::loadTimeStep( wxString fileName, const int timeStep, const float t
             // Will not return now to make sure the pHdrFile pointer is freed.
         }
     }
-    
+        
     if( flag )
     {
         m_dh->m_rows            = m_rows;

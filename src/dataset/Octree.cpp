@@ -620,7 +620,7 @@ void Octree::VOITest( int i_minx, int i_miny, int i_minz,
             if(zMin < midZ && zMax > i_minz)
             {
                 inBoxes[0] = true;
-                boxTest( i_minx, i_miny, i_minz, midX, midY, midZ, lvl+1, m_quad1 ); // Front Bottom Left
+                VOITest( i_minx, i_miny, i_minz, midX, midY, midZ, lvl+1, m_quad1, pSelObj ); // Front Bottom Left
                 
             }
     
@@ -629,7 +629,7 @@ void Octree::VOITest( int i_minx, int i_miny, int i_minz,
             if(zMin < midZ && zMax > i_minz)
             {
                 inBoxes[1] = true;
-                boxTest( i_minx, midY, i_minz, midX, i_maxy, midZ, lvl+1, m_quad2 ); //Front Up Left
+                VOITest( i_minx, midY, i_minz, midX, i_maxy, midZ, lvl+1, m_quad2, pSelObj ); //Front Up Left
             }
     
     if(xMin < i_maxx && xMax > midX)
@@ -637,7 +637,7 @@ void Octree::VOITest( int i_minx, int i_miny, int i_minz,
             if(zMin < midZ && zMax > i_minz)
             {
                 inBoxes[2] = true;
-                boxTest( midX, i_miny, i_minz, i_maxx, midY, midZ, lvl+1, m_quad3 ); //Front Bottom Right
+                VOITest( midX, i_miny, i_minz, i_maxx, midY, midZ, lvl+1, m_quad3, pSelObj ); //Front Bottom Right
             }
     
     if(xMin < i_maxx && xMax > midX)
@@ -645,7 +645,7 @@ void Octree::VOITest( int i_minx, int i_miny, int i_minz,
             if(zMin < midZ && zMax > i_minz)
             {
                 inBoxes[3] = true;
-                boxTest( midX, midY, i_minz, i_maxx, i_maxy, midZ, lvl+1, m_quad4 ); //Front Up Right
+                VOITest( midX, midY, i_minz, i_maxx, i_maxy, midZ, lvl+1, m_quad4, pSelObj ); //Front Up Right
             }
     
     if(xMin < midX && xMax > i_minx)
@@ -653,7 +653,7 @@ void Octree::VOITest( int i_minx, int i_miny, int i_minz,
             if(zMin < i_maxz && zMax > midZ)
             {
                 inBoxes[4] = true;
-                boxTest( i_minx, i_miny, midZ, midX, midY, i_maxz, lvl+1, m_quad5 ); //Back Bottom Left
+                VOITest( i_minx, i_miny, midZ, midX, midY, i_maxz, lvl+1, m_quad5, pSelObj ); //Back Bottom Left
             }
     
     if(xMin < midX && xMax > i_minx)
@@ -661,7 +661,7 @@ void Octree::VOITest( int i_minx, int i_miny, int i_minz,
             if(zMin < i_maxz && zMax > midZ)
             {
                 inBoxes[5] = true;
-                boxTest( i_minx, midY, midZ, midX, i_maxy, i_maxz, lvl+1, m_quad6 ); //Back Up Left
+                VOITest( i_minx, midY, midZ, midX, i_maxy, i_maxz, lvl+1, m_quad6, pSelObj ); //Back Up Left
             }
     
     if(xMin < i_maxx && xMax > midX)
@@ -669,7 +669,7 @@ void Octree::VOITest( int i_minx, int i_miny, int i_minz,
             if(zMin < i_maxz && zMax > midZ)
             {
                 inBoxes[6] = true;
-                boxTest( midX, i_miny, midZ, i_maxx, midY, i_maxz, lvl+1, m_quad7 ); //Back Bottom Right
+                VOITest( midX, i_miny, midZ, i_maxx, midY, i_maxz, lvl+1, m_quad7, pSelObj ); //Back Bottom Right
                 
             }
     
@@ -678,7 +678,7 @@ void Octree::VOITest( int i_minx, int i_miny, int i_minz,
             if(zMin < i_maxz && zMax > midZ)
             {
                 inBoxes[7] = true;
-                boxTest( midX, midY ,midZ, i_maxx, i_maxy, i_maxz, lvl+1, m_quad8 ); //Back up Right
+                VOITest( midX, midY ,midZ, i_maxx, i_maxy, i_maxz, lvl+1, m_quad8, pSelObj ); //Back up Right
             }  
     
     SelectionVOI *pSelVOI = (SelectionVOI*)pSelObj;
@@ -694,22 +694,15 @@ void Octree::VOITest( int i_minx, int i_miny, int i_minz,
                 for(unsigned int i = 0; i < currSub[k].size(); i++)
                 {
                     indice = currSub[k][i];
+
                     posX = m_pointArray[indice*3];
                     posY = m_pointArray[indice*3+1];
                     posZ = m_pointArray[indice*3+2];
                     
-                    
-                    // Convert to voxel coordinates
                     if( pSelVOI->isPointInside( posX, posY, posZ ) )
-                    
-                    /*if( (posX  - l_axisCenter)*(posX  - l_axisCenter) / ( l_axisRadius  * l_axisRadius  ) + 
-                       (posY - l_axis1Center)*(posY - l_axis1Center) / ( l_axis1Radius * l_axis1Radius ) + 
-                       (posZ - l_axis2Center)*(posZ - l_axis2Center) / ( l_axis2Radius * l_axis2Radius ) <= 1.0f )
-                    {*/
                     {
                         m_id.push_back(indice);
                     }
-                    //}
                 }
             }
         }
