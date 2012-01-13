@@ -452,6 +452,13 @@ bool Anatomy::loadNifti( wxString fileName )
     m_frames    = pImage->dim[3]; 
     m_bands     = pImage->dim[4];
     m_dataType  = pImage->datatype;
+    
+    // Make sure that the number of bands is set to at least one, since it is
+    // impossible to have less than 1 band.
+    if( m_bands < 1 )
+    {
+        m_bands = 1;
+    }
 
     if( m_dh->m_anatomyLoaded )
     {
