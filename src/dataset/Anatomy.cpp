@@ -801,9 +801,9 @@ bool Anatomy::loadTimeStep( wxString fileName, const int timeStep )
     m_frames    = pImage->dim[3]; 
     
     // Check the index versus the number of available time steps.
-    if( timeStep >= pImage->dim[4] )
+    if( timeStep < 0 || timeStep >= pImage->dim[4] )
     {
-        m_dh->m_lastError = wxT( "Time step index is greater than number of available time steps" );
+        m_dh->m_lastError = wxT( "Invalid time step." );
         return false;
     }
 

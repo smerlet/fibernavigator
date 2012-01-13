@@ -417,8 +417,9 @@ bool DatasetHelper::loadFmriClusters()
 	wxString l_wildcard         = wxT( "*.*|*.*|Nifti (*.nii)|*.nii*" );
     wxString l_defaultDir       = wxEmptyString;
     wxString l_defaultFileName  = wxEmptyString;
+
     wxFileDialog dialog( m_mainFrame, l_caption, l_defaultDir, l_defaultFileName, l_wildcard, wxOPEN | wxFD_MULTIPLE );
-    //dialog.SetFilterIndex( i_index );
+
     dialog.SetFilterIndex( 0 );
     dialog.SetDirectory( m_lastPath );
     if( dialog.ShowModal() == wxID_OK )
@@ -434,18 +435,32 @@ bool DatasetHelper::loadFmriClusters()
     const int numberSteps( 1 );
     for( int timeStep( 0 ); timeStep < numberSteps && l_flag; ++timeStep )
     {
-        Anatomy *pTempAnat = new Anatomy( this );
-
-        if( pTempAnat->loadTimeStep( l_fileNames[0], timeStep ) )
+        long masterClusterIdx( 0 );
+        
+        // Create the dialog to ask for which master cluster to use.        
+        wxTextEntryDialog masterClusterDialog( 0, wxT( "Enter the index of the cluster map to use. If you don't know or do not have a specific value, use 0." ), wxT( "Master cluster selection" ), wxT( "0" ) );
+        
+        int returnValue = masterClusterDialog.ShowModal();
+        
+        if( returnValue == wxID_OK )
         {
-            pTempAnat->setAnatType( TYPE_FMRI_CLUSTERS_MAP );
-            finishLoading( pTempAnat );
-            pTempAnat->processAsFmriClusterMap( l_fileNames[0] );
-        }
-        else
-        {
-            l_flag = false;
-            delete pTempAnat;
+            // Get the value.
+            wxString enteredValue = masterClusterDialog.GetValue();
+            enteredValue.ToLong( &masterClusterIdx );
+            
+            Anatomy *pTempAnat = new Anatomy( this );
+            
+            if( pTempAnat->loadTimeStep( l_fileNames[0], static_cast<int>(masterClusterIdx ) ) )
+            {
+                pTempAnat->setAnatType( TYPE_FMRI_CLUSTERS_MAP );
+                finishLoading( pTempAnat );
+                pTempAnat->processAsFmriClusterMap( l_fileNames[0] );
+            }
+            else
+            {
+                l_flag = false;
+                delete pTempAnat;
+            }
         }
     }
     
