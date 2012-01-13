@@ -143,7 +143,9 @@ public:
     MainFrame *m_mainFrame;
 
 private:
-    void AddSelectionObjectToSelectionTree( SelectionObject *pSelObj );
+    void AddSelectionObjectToSelectionTree( SelectionObject *pSelObj, const wxTreeItemId &parentTreeId );
+    void AddSelectionObjectsToSelectionTree( const std::vector< SelectionObject* > &selObjects, 
+                                             bool addAsChildOfFirst = false );
     
     wxSizer *propertiesSizer;
     PropertiesWindow(wxWindow *parent, wxWindowID id, const wxPoint &pos, const wxSize &size );

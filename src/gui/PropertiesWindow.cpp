@@ -282,13 +282,18 @@ void PropertiesWindow::OnNewVoiFromOverlay( wxCommandEvent& WXUNUSED(event) )
         return;
     }
 
-    AddSelectionObjectToSelectionTree( pSelectionObject );
+    wxTreeItemId parentSelectionId = m_mainFrame->m_pTreeWidget->GetSelection();
+    
+    AddSelectionObjectToSelectionTree( pSelectionObject, parentSelectionId );
 
     m_mainFrame->refreshAllGLWidgets();
 }
 
-void PropertiesWindow::OnNewVoiFromClusters( wxCommandEvent& WXUNUSED( event ) )
+void PropertiesWindow::OnNewVoiFromClusters( wxCommandEvent& event )
 {
+    // First check is for the Shift key.
+    bool shiftKeyDown = wxGetKeyState( WXK_SHIFT );
+    
     // Get the anatomy
     Anatomy *pAnat( NULL );
     
@@ -336,6 +341,8 @@ void PropertiesWindow::OnNewVoiFromClusters( wxCommandEvent& WXUNUSED( event ) )
         wxArrayInt selectedIdx = clusterSelectionDiag.GetSelections();
         selectedIdx.Sort( compareIntDecreasing );
         
+        vector< SelectionObject * > selectionObjects;
+        
         for( unsigned int idIdx( 0 ); idIdx < selectedIdx.GetCount(); ++idIdx )
         {
             // Get the value, and create the VOI.
@@ -350,8 +357,14 @@ void PropertiesWindow::OnNewVoiFromClusters( wxCommandEvent& WXUNUSED( event ) )
             
             pSelVOI->setName( voiName );
             
-            AddSelectionObjectToSelectionTree( pSelVOI );
+            selectionObjects.push_back( pSelVOI );
         }
+        
+        // If the Shift key was pressed when the button was clicked, the user wants to
+        // place all selection VOIs in a hierarchical order. Else, in the default case,
+        // we place the first one, then all the remaining ones are direct children of the
+        // first one.
+        AddSelectionObjectsToSelectionTree( selectionObjects, !shiftKeyDown );
     }
     
     m_mainFrame->refreshAllGLWidgets();
@@ -1375,10 +1388,9 @@ void PropertiesWindow::OnRecalcMainDir( wxCommandEvent& WXUNUSED(event) )
             }*/
 }
 
-void PropertiesWindow::AddSelectionObjectToSelectionTree( SelectionObject *pSelObj )
+void PropertiesWindow::AddSelectionObjectToSelectionTree( SelectionObject *pSelObj,
+                                                          const wxTreeItemId &parentTreeId )
 {
-    wxTreeItemId treeObjectId = m_mainFrame->m_pTreeWidget->GetSelection();
-    
     wxTreeItemId newSelectionObjectId;
     
     if( m_mainFrame->m_pDatasetHelper->m_pSelectionTree->isEmpty() )
@@ -1393,14 +1405,14 @@ void PropertiesWindow::AddSelectionObjectToSelectionTree( SelectionObject *pSelO
     }
     else
     {
-        CustomTreeItem *pItem = (CustomTreeItem*) m_mainFrame->m_pTreeWidget->GetItemData( treeObjectId );
+        CustomTreeItem *pItem = (CustomTreeItem*) m_mainFrame->m_pTreeWidget->GetItemData( parentTreeId );
         
         int parentId = pItem->getId();
         
         int childId = m_mainFrame->m_pDatasetHelper->m_pSelectionTree->addChildrenObject( parentId,  pSelObj );
         
         CustomTreeItem *pTreeItem = new CustomTreeItem( childId );
-        newSelectionObjectId = m_mainFrame->m_pTreeWidget->AppendItem( treeObjectId, pSelObj->getName(), 0, -1, pTreeItem );
+        newSelectionObjectId = m_mainFrame->m_pTreeWidget->AppendItem( parentTreeId, pSelObj->getName(), 0, -1, pTreeItem );
         
         m_mainFrame->m_pTreeWidget->SetItemBackgroundColour( newSelectionObjectId, *wxGREEN );
     }
@@ -1411,4 +1423,30 @@ void PropertiesWindow::AddSelectionObjectToSelectionTree( SelectionObject *pSelO
     m_mainFrame->m_pTreeWidget->SelectItem( newSelectionObjectId, true );
     
     m_mainFrame->m_pDatasetHelper->m_selBoxChanged = true;
+}
+
+void PropertiesWindow::AddSelectionObjectsToSelectionTree( const vector< SelectionObject* > &selObjects, bool addAsChildOfFirst /* = false */ )
+{
+    if( selObjects.empty() )
+    {
+        return;
+    }
+    
+    wxTreeItemId baseSelectionId = m_mainFrame->m_pTreeWidget->GetSelection();
+    
+    AddSelectionObjectToSelectionTree( selObjects[0], baseSelectionId );
+    
+    wxTreeItemId parentSelectionId = m_mainFrame->m_pTreeWidget->GetSelection();
+    
+    for( unsigned int selObjIdx( 1 ); selObjIdx < selObjects.size(); ++selObjIdx )
+    {
+        AddSelectionObjectToSelectionTree( selObjects[ selObjIdx ], parentSelectionId );
+        
+        if( !addAsChildOfFirst )
+        {
+            parentSelectionId = m_mainFrame->m_pTreeWidget->GetSelection();
+        }
+    }
+    
+    return;
 }
