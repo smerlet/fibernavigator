@@ -441,6 +441,7 @@ bool Anatomy::loadNifti( wxString fileName )
     if( ! pImage )
     {
         m_dh->m_lastError = wxT( "nifti file corrupt, cannot create nifti image from header" );
+        free( pHdrFile );
         return false;
     }
 #ifdef DEBUG
@@ -465,6 +466,7 @@ bool Anatomy::loadNifti( wxString fileName )
         if( m_rows != m_dh->m_rows || m_columns != m_dh->m_columns || m_frames != m_dh->m_frames )
         {
             m_dh->m_lastError = wxT( "dimensions of loaded files must be the same" );
+            free( pHdrFile );
             return false;
         }
     }
@@ -532,6 +534,7 @@ bool Anatomy::loadNifti( wxString fileName )
     if( !pFileData )
     {
         m_dh->m_lastError = wxT( "nifti file corrupt" );
+        free( pHdrFile );
         return false;
     }
     
@@ -689,6 +692,9 @@ bool Anatomy::loadNifti( wxString fileName )
 
         equalizeHistogram();
     }
+    
+    nifti_image_free( pFileData );
+    pFileData = NULL;
     
     free(pHdrFile);
     pHdrFile = NULL;
