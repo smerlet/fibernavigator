@@ -32,6 +32,9 @@ public:
     // Checks if a point is inside the VOI.
     bool isPointInside( const float xPos, const float yPos, const float zPos ) const;
     
+    virtual void createPropertiesSizer( PropertiesWindow *pParent );
+    virtual void updatePropertiesSizer();
+    
 private:
     // Fonction from SelectionObject (virtual pure)
     void drawObject( GLfloat* i_color );
@@ -43,7 +46,13 @@ private:
     unsigned int m_nbCols;
     unsigned int m_nbFrames;
     
+    unsigned int m_voiSize;
+    
     CBoolIsoSurface *m_pIsoSurface;
+    
+private:
+    // GUI data
+    wxTextCtrl *m_pVOISize;
 };
 
 #endif // SELECTIONVOI_H_

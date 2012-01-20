@@ -34,7 +34,8 @@ SelectionObject( i_center, i_size, i_datasetHelper )
 }*/
 
 SelectionVOI::SelectionVOI( DatasetHelper *pDH, Anatomy *pSourceAnatomy, const float threshold, const ThresholdingOperationType opType )
-    : SelectionObject( Vector(0.0, 0.0, 0.0), Vector(0.0, 0.0, 0.0), pDH )
+    : SelectionObject( Vector(0.0, 0.0, 0.0), Vector(0.0, 0.0, 0.0), pDH ),
+      m_voiSize( 0 )
 {
     m_nbRows   = pSourceAnatomy->getRows();
     m_nbCols   = pSourceAnatomy->getColumns();
@@ -132,6 +133,8 @@ SelectionVOI::SelectionVOI( DatasetHelper *pDH, Anatomy *pSourceAnatomy, const f
                ( spaceZMax + spaceZMin ) / 2.0f );
     
     setSize( spaceXMax - spaceXMin, spaceYMax - spaceYMin, spaceZMax - spaceZMin );
+    
+    m_voiSize = std::count( m_includedVoxels.begin(), m_includedVoxels.end(), true );
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -362,6 +365,28 @@ bool SelectionVOI::isPointInside( const float xPos, const float yPos, const floa
     unsigned int dataCoord( zVoxelCoord * m_nbCols * m_nbRows + yVoxelCoord * m_nbCols + xVoxelCoord );
     
     return m_includedVoxels.at( dataCoord );
+}
+
+void SelectionVOI::createPropertiesSizer( PropertiesWindow *pParent )
+{
+    SelectionObject::createPropertiesSizer( pParent );
+    
+    m_propertiesSizer->AddSpacer( 8 );
+    
+    wxSizer *pSizer = new wxBoxSizer( wxHORIZONTAL );
+    
+    m_pVOISize = new wxTextCtrl( pParent, wxID_ANY, wxString::Format( wxT("%d"), m_voiSize ), wxDefaultPosition, wxDefaultSize , wxTE_CENTRE | wxTE_READONLY);    
+    m_pVOISize->SetBackgroundColour( *wxLIGHT_GREY );
+    
+    pSizer->Add( new wxStaticText( pParent, wxID_ANY, wxT( "Nb. of voxels: " ),wxDefaultPosition, wxDefaultSize, wxALIGN_CENTER ), 0, wxALIGN_CENTER );
+    pSizer->Add( m_pVOISize, 0, wxALIGN_CENTER );
+    
+    m_propertiesSizer->Add( pSizer, 0, wxALIGN_CENTER );
+}
+
+void SelectionVOI::updatePropertiesSizer()
+{
+    SelectionObject::updatePropertiesSizer();
 }
 
 SelectionVOI::~SelectionVOI()
