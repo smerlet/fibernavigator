@@ -22,7 +22,7 @@ public:
     // Constructor / Destructor
     SelectionBox( Vector i_center, Vector i_size, DatasetHelper* i_datasetHelper );
     SelectionBox( DatasetHelper* i_datasetHelper, Anatomy* i_anatomy );
-    ~SelectionBox();
+    virtual ~SelectionBox();
 
     // Fonction from SelectionObject (virtual pure)
     hitResult hitTest( Ray* i_ray );

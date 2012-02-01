@@ -19,7 +19,7 @@ class SelectionEllipsoid : public SelectionObject
 public:
     // Constructor / Destructor
     SelectionEllipsoid( Vector i_center, Vector i_size, DatasetHelper* i_datasetHelper );
-    ~SelectionEllipsoid();
+    virtual ~SelectionEllipsoid();
  
     // Fonctions from SelectionObject (virtual pure)
     hitResult hitTest( Ray* i_ray );

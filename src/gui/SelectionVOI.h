@@ -21,7 +21,7 @@ public:
     //SelectionVoi( Vector i_center, Vector i_size, DatasetHelper* i_datasetHelper );
     SelectionVOI( DatasetHelper *pDH, Anatomy *pSourceAnatomy, const float threshold, const ThresholdingOperationType opType );
     //SelectionVoi();
-    ~SelectionVOI();
+    virtual ~SelectionVOI();
     
     // Fonctions from SelectionObject (virtual pure)
     hitResult hitTest( Ray* i_ray );

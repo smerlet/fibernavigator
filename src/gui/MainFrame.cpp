@@ -1621,10 +1621,11 @@ void MainFrame::deleteTreeItem()
         if( objectType == TYPE_SELECTION_OBJECT && m_pDatasetHelper->m_pSelectionTree->containsId( pTreeItem->getId() ) )
         {  
             deleteSceneObject();  // TODO check
-            m_pTreeWidget->Delete( l_treeId );
-            
+
             // Remove from the SelectionTree
             m_pDatasetHelper->m_pSelectionTree->removeObject( pTreeItem->getId() );
+            
+            m_pTreeWidget->Delete( l_treeId );
             
             if (m_pDatasetHelper->m_lastSelectedObject != NULL)
             {
