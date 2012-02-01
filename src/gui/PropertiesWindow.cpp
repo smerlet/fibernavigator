@@ -21,14 +21,6 @@ EVT_PAINT(      PropertiesWindow::OnPaint)
 EVT_SIZE(       PropertiesWindow::OnSize)
 END_EVENT_TABLE()
 
-// Anonymous namespace
-namespace {
-    int compareIntDecreasing( int *pFirst, int *pSecond )
-    {
-        return *pFirst <= *pSecond;
-    }
-}
-
 PropertiesWindow::PropertiesWindow( MainFrame *parent, wxWindowID id,
                     const wxPoint &pos, const wxSize &size )
         : wxScrolledWindow( parent, id, pos, size, wxBORDER_NONE, _T("test canvas") )
@@ -339,11 +331,10 @@ void PropertiesWindow::OnNewVoiFromClusters( wxCommandEvent& event )
     {
         // Create the VOIs for each choice.
         wxArrayInt selectedIdx = clusterSelectionDiag.GetSelections();
-        selectedIdx.Sort( compareIntDecreasing );
         
         vector< SelectionObject * > selectionObjects;
         
-        for( unsigned int idIdx( 0 ); idIdx < selectedIdx.GetCount(); ++idIdx )
+        for( int idIdx( selectedIdx.GetCount() - 1 ); idIdx >= 0 ; --idIdx )
         {
             // Get the value, and create the VOI.
             // Need the + 1 since the 0.0 value is not displayed but still in the vector.
