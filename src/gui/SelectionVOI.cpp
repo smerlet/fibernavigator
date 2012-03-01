@@ -2,7 +2,6 @@
 
 #include "SelectionVOI.h"
 
-//#include "../misc/IsoSurface/CIsoSurface.h"
 #include "../misc/IsoSurface/CBoolIsoSurface.h"
 
 #include <algorithm>
