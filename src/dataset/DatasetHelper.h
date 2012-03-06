@@ -88,8 +88,10 @@ public:
     //! Saves the current scene to an xml file
     void save( const wxString filename );
 
+    // TODO this should not exist
     SelectionObjectList getSelectionObjects();
     void   deleteAllPoints();
+    // This is never called. TODO check if useful.
     void   deleteAllSelectionObjects();
     void   updateAllSelectionObjects();
     Vector mapMouse2World( const int i_x, const int i_y,GLdouble i_projection[16], GLint i_viewport[4], GLdouble i_modelview[16]);

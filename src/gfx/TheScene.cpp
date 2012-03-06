@@ -523,7 +523,9 @@ void TheScene::renderMesh()
 
     //Render selection objects
     glColor3f( 1.0f, 0.0f, 0.0f );
-    std::vector< std::vector< SelectionObject* > > selectionObjects = m_pDatasetHelper->getSelectionObjects();
+    
+    // TODO remove this and following block
+    //std::vector< std::vector< SelectionObject* > > selectionObjects = m_pDatasetHelper->getSelectionObjects();
 
     m_pDatasetHelper->m_shaderHelper->m_meshShader.setUniInt  ( "showFS", true );
     m_pDatasetHelper->m_shaderHelper->m_meshShader.setUniInt  ( "useTex", false );
@@ -632,15 +634,6 @@ void TheScene::renderFibers()
 	}
 
 	m_pDatasetHelper->m_selBoxChanged = false;
-
-    vector< vector< SelectionObject * > > selectionObjects = m_pDatasetHelper->getSelectionObjects();
-    for( vector< vector< SelectionObject *> >::iterator itMaster = selectionObjects.begin(); itMaster != selectionObjects.end(); ++itMaster )
-    {
-        for( vector< SelectionObject *>::iterator itChild = itMaster->begin(); itChild != itMaster->end(); ++itChild )
-        {
-            (*itChild)->setIsDirty( false );
-        }
-    }
 
 	glPopAttrib();
 }

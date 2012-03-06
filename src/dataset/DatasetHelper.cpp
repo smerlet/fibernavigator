@@ -486,11 +486,9 @@ bool DatasetHelper::load( wxString i_fileName, int i_index, const float i_thresh
 				l_fibers->updateLinesShown();
 				m_mainFrame->refreshAllGLWidgets();
 				
-				finishLoading( l_fibers, true);
+				finishLoading( l_fibers, true );
 				
 				m_fibersLoaded = true;
-				// Normally this should not be needed. TODO
-                m_selBoxChanged = true;
 
 				return true;
 			}
@@ -1094,6 +1092,7 @@ void DatasetHelper::save( const wxString i_fileName )
         l_pointNode->AddProperty( l_propX );
     }
 
+    // TODO modify this
     SelectionObject* l_currentSelectionObject;
     std::vector< std::vector< SelectionObject* > > l_selectionObjects = getSelectionObjects();
 
@@ -1231,6 +1230,7 @@ void DatasetHelper::save( const wxString i_fileName )
         l_xmlDoc.Save( i_fileName, 2 );
 }
 
+// TODO remove this, it should not exist
 std::vector< std::vector< SelectionObject* > > DatasetHelper::getSelectionObjects()
 {
     std::vector< std::vector< SelectionObject* > > l_selectionObjects;
@@ -1274,8 +1274,10 @@ void DatasetHelper::treeFinished()
     m_mainFrame->refreshAllGLWidgets();
 }
 
+// TODO this is never called. Check if useful.
 void DatasetHelper::deleteAllSelectionObjects()
 {
+    // TODO modify this
     std::vector< std::vector< SelectionObject* > > l_selectionObjects = getSelectionObjects();
     for( unsigned int i = 0; i < l_selectionObjects.size(); ++i )
         for( unsigned int j = 0; j < l_selectionObjects[i].size(); ++j )
@@ -1551,6 +1553,7 @@ void DatasetHelper::createCutDataset()
     Anatomy* l_newAnatomy = new Anatomy( this );
     l_newAnatomy->setZero( m_columns, m_rows, m_frames );
 
+    // TODO modify this
     std::vector< std::vector< SelectionObject* > > l_selectionObjects = getSelectionObjects();
     int x1, x2, y1, y2, z1, z2;
 

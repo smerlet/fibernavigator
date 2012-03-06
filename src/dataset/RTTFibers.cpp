@@ -65,6 +65,8 @@ void RTTFibers::seed()
     float zVoxel = m_pDatasetHelper->m_zVoxel;
 
     Vector minCorner, maxCorner, middle;
+    
+    // TODO modify this
     vector< vector< SelectionObject* > > selectionObjects = m_pDatasetHelper->getSelectionObjects();
     
 

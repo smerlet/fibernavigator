@@ -1142,8 +1142,7 @@ void MainFrame::createNewSelectionObject( ObjectType i_newSelectionObjectType )
     if( treeSelectedNew( l_treeSelectionId ) == TYPE_SELECTION_MASTER && 
         !m_pDatasetHelper->m_pSelectionTree->isEmpty() )
     {
-        // TODO use good print dbug version
-        //m_pDatasetHelper->printDebug( wxT("Cannot add more than one root selection item."), 2 );
+        Logger::getInstance()->print( wxT("Cannot add more than one root selection item."), LOGLEVEL_MESSAGE );
         return;
     }
     
