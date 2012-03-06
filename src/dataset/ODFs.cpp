@@ -16,12 +16,13 @@
 #include <math.h>
 #include <fstream> 
 
+#include "../Logger.h"
 #include "../misc/nifti/nifti1_io.h"
 #include "../misc/Fantom/FMatrix.h"
 
 // m_sh_basis
-// 0: Original Descoteaux et al RR 5768 basis (default in dmri)
-// 1: Descoteaux PhD thesis basis definition
+// 0: Original Descoteaux et al RR 5768 basis 
+// 1: Descoteaux PhD thesis basis definition (default in dmri)
 // 2: Tournier
 // 3: PTK
 ///////////////////////////////////////////////////////////////////////////
@@ -30,14 +31,14 @@
 ODFs::ODFs( DatasetHelper* i_datasetHelper ) :
     Glyph            ( i_datasetHelper ), 
 	 m_isMaximasSet   ( false ),
-    m_axisThreshold  ( 0.5f ),
+    m_axisThreshold  ( 0.2f ),
 	 m_order          ( 0    ),
     m_radiusAttribLoc( 0    ),
 	 m_radiusBuffer   ( NULL ),    
     m_nbors          ( NULL ),
-    m_sh_basis       ( 0 )
+    m_sh_basis       ( 1 )
 {
-    m_scalingFactor = 0.0f;
+    m_scalingFactor = 5.0f;
 
     // Generating hemispheres
     generateSpherePoints( m_scalingFactor );
@@ -149,10 +150,10 @@ bool ODFs::loadNifti( wxString i_fileName )
 void ODFs::extractMaximas()
 {
     std::cout << "Extracting maximas ... please wait 30sec \n";
-    m_nbors = new std::vector<std::pair<float,int> >[m_phiThetaDirection[LOD_6].getDimensionY()]; // Set number of points to maximum details
+    m_nbors = new std::vector<std::pair<float,int> >[m_phiThetaDirection[LOD_3].getDimensionY()]; // Set number of points to maximum details
     m_angle_min = get_min_angle();
-    m_nbPointsPerGlyph = getLODNbOfPoints( LOD_6 ); // Set number of points to maximum details for C*B mult
-    set_nbors(m_phiThetaDirection[LOD_6]); // Create neighboring system
+    m_nbPointsPerGlyph = getLODNbOfPoints( LOD_3 ); // Set number of points to maximum details for C*B mult
+    set_nbors(m_phiThetaDirection[LOD_3]); // Create neighboring system
     m_mainDirections.resize(m_datasetHelper.m_frames*m_datasetHelper.m_rows*m_datasetHelper.m_columns);
     
     int currentIdx;
@@ -165,7 +166,7 @@ void ODFs::extractMaximas()
 
                 if(m_coefficients[currentIdx][0] != 0)
                 {
-                    m_mainDirections[currentIdx] = getODFmax(m_coefficients[currentIdx],m_shMatrix[LOD_6],m_phiThetaDirection[LOD_6],m_axisThreshold);
+                    m_mainDirections[currentIdx] = getODFmax(m_coefficients[currentIdx],m_shMatrix[LOD_3],m_phiThetaDirection[LOD_3],m_axisThreshold);
                 }
             }
 
@@ -320,20 +321,20 @@ float ODFs::get_min_angle()
     std::pair<float,float> res;
 	float angle_min = 90.0f;   
 
-	for(unsigned int i=0; i < m_phiThetaDirection[LOD_6].getDimensionY(); i++)
+	for(unsigned int i=0; i < m_phiThetaDirection[LOD_3].getDimensionY(); i++)
     {   // Remove all recurrent point of phiThetaDir in vectUnique
         bool isUnique = true;
         for(unsigned int j=0; j < vectUnique.size() && isUnique ; j++)
         {
-            if(m_phiThetaDirection[LOD_6](i,0) == vectUnique[j].first && m_phiThetaDirection[LOD_6](i,1) == vectUnique[j].second)
+            if(m_phiThetaDirection[LOD_3](i,0) == vectUnique[j].first && m_phiThetaDirection[LOD_3](i,1) == vectUnique[j].second)
             {
 				isUnique = false;
 			}
         }
         if(isUnique)
         {
-            res.first = m_phiThetaDirection[LOD_6](i,0);
-            res.second = m_phiThetaDirection[LOD_6](i,1);
+            res.first = m_phiThetaDirection[LOD_3](i,0);
+            res.second = m_phiThetaDirection[LOD_3](i,1);
             vectUnique.push_back(res); 
         }
     }
@@ -377,12 +378,12 @@ void ODFs::set_nbors(FMatrix o_phiThetaDirection)
     direction d,d2; /*current direction*/
 	const float max_allowed_angle = 90;
  
-    for(unsigned int i = 0; i < m_phiThetaDirection[LOD_6].getDimensionY(); i++) 
+    for(unsigned int i = 0; i < m_phiThetaDirection[LOD_3].getDimensionY(); i++) 
     {
     
-        d.x = std::cos(m_phiThetaDirection[LOD_6](i,0))*std::sin(m_phiThetaDirection[LOD_6](i,1));
-        d.y = std::sin(m_phiThetaDirection[LOD_6](i,0))*std::sin(m_phiThetaDirection[LOD_6](i,1));
-        d.z = std::cos(m_phiThetaDirection[LOD_6](i,1));
+        d.x = std::cos(m_phiThetaDirection[LOD_3](i,0))*std::sin(m_phiThetaDirection[LOD_3](i,1));
+        d.y = std::sin(m_phiThetaDirection[LOD_3](i,0))*std::sin(m_phiThetaDirection[LOD_3](i,1));
+        d.z = std::cos(m_phiThetaDirection[LOD_3](i,1));
         
         /* 
            look at other possible direction sampling neighbors
@@ -390,13 +391,13 @@ void ODFs::set_nbors(FMatrix o_phiThetaDirection)
            if a sampling directions is within +- 3 degrees from i,
            we consider it and check if i is bigger
         */
-        for(unsigned int j=0; j<m_phiThetaDirection[LOD_6].getDimensionY(); j++)
+        for(unsigned int j=0; j<m_phiThetaDirection[LOD_3].getDimensionY(); j++)
         {
             if(j != i ) 
             {
-                d2.x = std::cos(m_phiThetaDirection[LOD_6](j,0))*std::sin(m_phiThetaDirection[LOD_6](j,1));
-                d2.y = std::sin(m_phiThetaDirection[LOD_6](j,0))*std::sin(m_phiThetaDirection[LOD_6](j,1));
-                d2.z = std::cos(m_phiThetaDirection[LOD_6](j,1));
+                d2.x = std::cos(m_phiThetaDirection[LOD_3](j,0))*std::sin(m_phiThetaDirection[LOD_3](j,1));
+                d2.y = std::sin(m_phiThetaDirection[LOD_3](j,0))*std::sin(m_phiThetaDirection[LOD_3](j,1));
+                d2.z = std::cos(m_phiThetaDirection[LOD_3](j,1));
                         
                 float angle_found = 180*std::acos(d.x*d2.x + d.y*d2.y + d.z*d2.z)/M_PI;
                 if(angle_found > max_allowed_angle)
@@ -413,8 +414,8 @@ void ODFs::set_nbors(FMatrix o_phiThetaDirection)
                         {
                           for(unsigned int n=0; n< m_nbors[i].size() && isDiff ; n++)
                           {
-                              if(m_phiThetaDirection[LOD_6](j,0) == m_phiThetaDirection[LOD_6](m_nbors[i][n].second,0) && 
-                                  m_phiThetaDirection[LOD_6](j,1) == m_phiThetaDirection[LOD_6](m_nbors[i][n].second,1))
+                              if(m_phiThetaDirection[LOD_3](j,0) == m_phiThetaDirection[LOD_3](m_nbors[i][n].second,0) && 
+                                  m_phiThetaDirection[LOD_3](j,1) == m_phiThetaDirection[LOD_3](m_nbors[i][n].second,1))
 							  {
                                 isDiff = false;
 							  }
@@ -450,8 +451,8 @@ void ODFs::set_nbors(FMatrix o_phiThetaDirection)
 							bool isDiff = true;
 							for(unsigned int n=0; n< m_nbors[i].size() && isDiff ; n++)
 							{
-								if(m_phiThetaDirection[LOD_6](j,0) == m_phiThetaDirection[LOD_6](m_nbors[i][n].second,0) && 
-									m_phiThetaDirection[LOD_6](j,1) == m_phiThetaDirection[LOD_6](m_nbors[i][n].second,1))
+								if(m_phiThetaDirection[LOD_3](j,0) == m_phiThetaDirection[LOD_3](m_nbors[i][n].second,0) && 
+									m_phiThetaDirection[LOD_3](j,1) == m_phiThetaDirection[LOD_3](m_nbors[i][n].second,1))
 								{
 									isDiff = false;
 								}
@@ -524,7 +525,7 @@ std::vector<Vector> ODFs::getODFmax(vector < float > coefs, const FMatrix & SHma
 	bool isCandidate = false;
 
 	/* Find all potential candidate to be a main direction according to the max_threshold */
-    for(unsigned int i = 0; i < m_phiThetaDirection[LOD_6].getDimensionY(); i++)
+    for(unsigned int i = 0; i < m_phiThetaDirection[LOD_3].getDimensionY(); i++)
     {
       if(norm_hemisODF[i] > max_thresh)//max_thresh) 
       { 
@@ -546,8 +547,8 @@ std::vector<Vector> ODFs::getODFmax(vector < float > coefs, const FMatrix & SHma
 
       if(isCandidate)
       {
-          float phi   = m_phiThetaDirection[LOD_6](i,0);
-          float theta = m_phiThetaDirection[LOD_6](i,1);
+          float phi   = m_phiThetaDirection[LOD_3](i,0);
+          float theta = m_phiThetaDirection[LOD_3](i,1);
 
           bool isDiff = true;
 
@@ -591,34 +592,33 @@ void ODFs::draw()
         return;
 
     // Enable the shader.
-    DatasetInfo::m_dh->m_shaderHelper->m_pOdfsShader->bind();
+    DatasetInfo::m_dh->m_shaderHelper->m_odfsShader.bind();
     glBindTexture( GL_TEXTURE_1D, m_textureId );
 
     // This is the color look up table texture.
-    DatasetInfo::m_dh->m_shaderHelper->m_pOdfsShader->setUniSampler( "clut",        0                           );
+    DatasetInfo::m_dh->m_shaderHelper->m_odfsShader.setUniSampler( "clut", 0 );
     
     // This is the brightness level of the odf.
-    DatasetInfo::m_dh->m_shaderHelper->m_pOdfsShader->setUniFloat(   "brightness",  DatasetInfo::m_brightness   );
+    DatasetInfo::m_dh->m_shaderHelper->m_odfsShader.setUniFloat( "brightness", DatasetInfo::m_brightness );
 
     // This is the alpha level of the odf.
-    DatasetInfo::m_dh->m_shaderHelper->m_pOdfsShader->setUniFloat(   "alpha",       DatasetInfo::m_alpha        );
+    DatasetInfo::m_dh->m_shaderHelper->m_odfsShader.setUniFloat( "alpha", DatasetInfo::m_alpha );
 
     // If m_mapOnSphere is true then the color will be set on a sphere instead of a deformed mesh.
-    DatasetInfo::m_dh->m_shaderHelper->m_pOdfsShader->setUniInt(      "mapOnSphere", (GLint)isDisplayShape(SPHERE)      );
+    DatasetInfo::m_dh->m_shaderHelper->m_odfsShader.setUniInt( "mapOnSphere", ( GLint ) isDisplayShape( SPHERE ) );
 
     // If m_colorWithPosition is true then the glyph will be colored with the position of the vertex.
-    DatasetInfo::m_dh->m_shaderHelper->m_pOdfsShader->setUniInt(      "colorWithPos", (GLint)m_colorWithPosition );
+    DatasetInfo::m_dh->m_shaderHelper->m_odfsShader.setUniInt( "colorWithPos", ( GLint ) m_colorWithPosition );
  
     // Get the radius attribute location
-    m_radiusAttribLoc = glGetAttribLocation( DatasetInfo::m_dh->m_shaderHelper->m_pOdfsShader->getProgramObject(),
-                        "radius" );
+    m_radiusAttribLoc = glGetAttribLocation( DatasetInfo::m_dh->m_shaderHelper->m_odfsShader.getId(), "radius" );
     Glyph::draw();
 
     // Disable the attribute
     glDisableVertexAttribArray( m_radiusAttribLoc);
 
     // Disable the tensor color shader.
-    DatasetInfo::m_dh->m_shaderHelper->m_pOdfsShader->release();
+    DatasetInfo::m_dh->m_shaderHelper->m_odfsShader.release();
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -647,10 +647,10 @@ void ODFs::drawGlyph( int i_zVoxel, int i_yVoxel, int i_xVoxel, AxisType i_axis 
     // Odf offset.
     GLfloat l_offset[3];
     getVoxelOffset( i_zVoxel, i_yVoxel, i_xVoxel, l_offset );
-    DatasetInfo::m_dh->m_shaderHelper->m_pOdfsShader->setUni3Float( "offset", l_offset );
+    DatasetInfo::m_dh->m_shaderHelper->m_odfsShader.setUni3Float( "offset", l_offset );
 
     // Lets set the min max radii for this odf.
-    DatasetInfo::m_dh->m_shaderHelper->m_pOdfsShader->setUni2Float( "radiusMinMax", m_radiiMinMaxMap[currentIdx] );    
+    DatasetInfo::m_dh->m_shaderHelper->m_odfsShader.setUni2Float( "radiusMinMax", m_radiiMinMaxMap[currentIdx] );    
 
     // Enable attribute
     glEnableVertexAttribArray( m_radiusAttribLoc );
@@ -690,13 +690,14 @@ void ODFs::drawGlyph( int i_zVoxel, int i_yVoxel, int i_xVoxel, AxisType i_axis 
     //if( i_axis == Y_AXIS ) { //Coronal: flip x
     //   l_flippedAxes[0] *= -1.0f;  
     //} 
+
     // Need a global flip in X on top of that, which is done above
 
-    DatasetInfo::m_dh->m_shaderHelper->m_pOdfsShader->setUni3Float(   "axisFlip",    l_flippedAxes               );
-    DatasetInfo::m_dh->m_shaderHelper->m_pOdfsShader->setUniInt( "showAxis", 0 );
+    DatasetInfo::m_dh->m_shaderHelper->m_odfsShader.setUni3Float(   "axisFlip",    l_flippedAxes               );
+    DatasetInfo::m_dh->m_shaderHelper->m_odfsShader.setUniInt( "showAxis", 0 );
     if (isDisplayShape(AXIS))
     {
-        DatasetInfo::m_dh->m_shaderHelper->m_pOdfsShader->setUniInt( "showAxis", 1 );
+        DatasetInfo::m_dh->m_shaderHelper->m_odfsShader.setUniInt( "showAxis", 1 );
         
         if(m_coefficients[currentIdx][0] != 0)
         {
@@ -709,10 +710,12 @@ void ODFs::drawGlyph( int i_zVoxel, int i_yVoxel, int i_xVoxel, AxisType i_axis 
                     l_coloring[1] = m_mainDirections[currentIdx][i][1];
                     l_coloring[2] = m_mainDirections[currentIdx][i][2];
 
-                    DatasetInfo::m_dh->m_shaderHelper->m_pOdfsShader->setUni3Float( "coloring", l_coloring );
+                    float halfScale = m_scalingFactor/5.0f;
+
+                    DatasetInfo::m_dh->m_shaderHelper->m_odfsShader.setUni3Float( "coloring", l_coloring );
                     glBegin(GL_LINES);  
-                        glVertex3f(-m_mainDirections[currentIdx][i][0],-m_mainDirections[currentIdx][i][1],-m_mainDirections[currentIdx][i][2]);
-                        glVertex3f(m_mainDirections[currentIdx][i][0],m_mainDirections[currentIdx][i][1],m_mainDirections[currentIdx][i][2]);       
+                    glVertex3f(-halfScale*m_mainDirections[currentIdx][i][0],-halfScale*m_mainDirections[currentIdx][i][1],-halfScale*m_mainDirections[currentIdx][i][2]);
+                        glVertex3f(halfScale*m_mainDirections[currentIdx][i][0],halfScale*m_mainDirections[currentIdx][i][1],halfScale*m_mainDirections[currentIdx][i][2]);       
                     glEnd();
                 }
             }
@@ -720,12 +723,12 @@ void ODFs::drawGlyph( int i_zVoxel, int i_yVoxel, int i_xVoxel, AxisType i_axis 
     }
     else
     {
-        DatasetInfo::m_dh->m_shaderHelper->m_pOdfsShader->setUniInt( "swapRadius", 0 );
+        DatasetInfo::m_dh->m_shaderHelper->m_odfsShader.setUniInt( "swapRadius", 0 );
         // Draw the first half of the odfs.
         glDrawArrays( GL_TRIANGLE_STRIP, 0, m_nbPointsPerGlyph );
 
         // Lets set the radius modifier.
-        DatasetInfo::m_dh->m_shaderHelper->m_pOdfsShader->setUniInt( "swapRadius", 1 );
+        DatasetInfo::m_dh->m_shaderHelper->m_odfsShader.setUniInt( "swapRadius", 1 );
         // Draw the other half of the odfs.
         glDrawArrays( GL_TRIANGLE_STRIP, 0, m_nbPointsPerGlyph );
 
@@ -873,9 +876,8 @@ void ODFs::loadRadiusBuffer( AxisType i_axis )
                   GL_DYNAMIC_DRAW );
 
     // There was a problem loading this buffer into video memory!
-    if( DatasetInfo::m_dh->GLError() )
+    if( Logger::getInstance()->printIfGLError( wxT( "Initialize vbo points for tensors" ) ) )
     {
-        DatasetInfo::m_dh->printGLError( wxT( "initialize vbo points for tensors" ) );
         m_datasetHelper.m_useVBO = false;
         delete [] m_radiusBuffer;
     }
@@ -1001,7 +1003,7 @@ void ODFs::getSphericalHarmonicMatrixRR5768( const vector< float > &i_meshPts,
                     
                     ++j;
 
-                    o_shMatrix(i, j) = real( cplx_2 );
+                    o_shMatrix(i, j) = sign*real( cplx_2 );
 
                 } // else
 
@@ -1200,7 +1202,7 @@ void ODFs::getSphericalHarmonicMatrixTournier( const vector< float > &i_meshPts,
                   o_shMatrix(i,j) = real(cplx_1);
                }
                else { // /* negative "m" SH  */
-                  o_shMatrix(i,j) = imag(cplx_1);
+                  o_shMatrix(i,j) = pow(-(float)1, m+1)*imag(cplx_1);
                }
                ++j;
             } 
@@ -1314,15 +1316,25 @@ void ODFs::changeShBasis(ODFs* l_dataset, DatasetHelper* m_data, int basis)
 
         }
 }
-
+///////////////////////////////////////////////////////////////////////////
+// This function will set a specific scaling factor for the glyph.
+//
+// i_scalingFactor      : The glyph scaling factor.
+///////////////////////////////////////////////////////////////////////////
+void ODFs::setScalingFactor( float i_scalingFactor )
+{
+    m_scalingFactor = i_scalingFactor;
+    generateSpherePoints( m_scalingFactor/5 );   
+    loadBuffer();
+}
 void ODFs::createPropertiesSizer(PropertiesWindow *parent)
 {
     Glyph::createPropertiesSizer(parent);
     wxSizer *l_sizer;
 
     m_pSliderFlood = new MySlider(parent, wxID_ANY,0,0,10, wxDefaultPosition, wxSize(100,-1), wxSL_HORIZONTAL | wxSL_AUTOTICKS);
-    m_pSliderFlood->SetValue(5);
-    m_pTxtThresBox = new wxTextCtrl(parent, wxID_ANY, wxT("0.5") ,wxDefaultPosition, wxSize(40,-1), wxTE_CENTRE | wxTE_READONLY);
+    m_pSliderFlood->SetValue(2);
+    m_pTxtThresBox = new wxTextCtrl(parent, wxID_ANY, wxT("0.2") ,wxDefaultPosition, wxSize(40,-1), wxTE_CENTRE | wxTE_READONLY);
     l_sizer = new wxBoxSizer(wxHORIZONTAL);
     m_pTextThres = new wxStaticText(parent, wxID_ANY, wxT("Threshold "),wxDefaultPosition, wxSize(60,-1), wxALIGN_RIGHT);
     l_sizer->Add(m_pTextThres,0,wxALIGN_CENTER);
@@ -1343,34 +1355,36 @@ void ODFs::createPropertiesSizer(PropertiesWindow *parent)
     l_sizer->Add(new wxStaticText(parent, wxID_ANY, wxT("Sh Basis "),wxDefaultPosition, wxSize(60,-1), wxALIGN_RIGHT),0,wxALIGN_CENTER);
     m_propertiesSizer->Add(l_sizer,0,wxALIGN_LEFT);
 
-    l_sizer = new wxBoxSizer(wxHORIZONTAL);
-    m_pRadiobtnOriginalBasis = new wxRadioButton(parent, wxID_ANY, _T( "RR5768" ), wxDefaultPosition, wxSize(132,-1),wxRB_GROUP);
-    l_sizer->Add(m_pRadiobtnOriginalBasis);
-    m_propertiesSizer->Add(l_sizer,0,wxALIGN_CENTER);
-    parent->Connect(m_pRadiobtnOriginalBasis->GetId(),wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler(PropertiesWindow::OnOriginalShBasis));
+    // l_sizer = new wxBoxSizer(wxHORIZONTAL);
+    // m_pRadiobtnOriginalBasis = new wxRadioButton(parent, wxID_ANY, _T( "RR5768" ), wxDefaultPosition, wxSize(132,-1),wxRB_GROUP);
+    // l_sizer->Add(m_pRadiobtnOriginalBasis);
+    // m_propertiesSizer->Add(l_sizer,0,wxALIGN_CENTER);
+    // parent->Connect(m_pRadiobtnOriginalBasis->GetId(),wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler(PropertiesWindow::OnOriginalShBasis));
     
     l_sizer = new wxBoxSizer(wxHORIZONTAL);
-    m_pRadiobtnDescoteauxBasis = new wxRadioButton(parent, wxID_ANY, _T( "Descoteaux" ), wxDefaultPosition, wxSize(132,-1));
+    m_pRadiobtnDescoteauxBasis = new wxRadioButton(parent, wxID_ANY, _T( "Descoteaux" ), \
+                                                   wxDefaultPosition, wxSize(132,-1));
     l_sizer->Add(m_pRadiobtnDescoteauxBasis);
     m_propertiesSizer->Add(l_sizer,0,wxALIGN_CENTER);
     parent->Connect(m_pRadiobtnDescoteauxBasis->GetId(),wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler(PropertiesWindow::OnDescoteauxShBasis));
 
     l_sizer = new wxBoxSizer(wxHORIZONTAL);
-    m_pRadiobtnTournierBasis = new wxRadioButton(parent, wxID_ANY, _T( "Tournier" ), wxDefaultPosition, wxSize(132,-1));
+    m_pRadiobtnTournierBasis = new wxRadioButton(parent, wxID_ANY, _T( "MRtrix" ), 
+                                                 wxDefaultPosition, wxSize(132,-1));
     l_sizer->Add(m_pRadiobtnTournierBasis);
     m_propertiesSizer->Add(l_sizer,0,wxALIGN_CENTER);
     parent->Connect(m_pRadiobtnTournierBasis->GetId(),wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler(PropertiesWindow::OnTournierShBasis));
 
-    l_sizer = new wxBoxSizer(wxHORIZONTAL);
-    m_pRadiobtnPTKBasis = new wxRadioButton(parent, wxID_ANY, _T( "PTK" ), wxDefaultPosition, wxSize(132,-1));
-    l_sizer->Add(m_pRadiobtnPTKBasis);
-    m_propertiesSizer->Add(l_sizer,0,wxALIGN_CENTER);
-    parent->Connect(m_pRadiobtnPTKBasis->GetId(),wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler(PropertiesWindow::OnPTKShBasis));
+    // l_sizer = new wxBoxSizer(wxHORIZONTAL);
+    // m_pRadiobtnPTKBasis = new wxRadioButton(parent, wxID_ANY, _T( "PTK" ), wxDefaultPosition, wxSize(132,-1));
+    // l_sizer->Add(m_pRadiobtnPTKBasis);
+    // m_propertiesSizer->Add(l_sizer,0,wxALIGN_CENTER);
+    // parent->Connect(m_pRadiobtnPTKBasis->GetId(),wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler(PropertiesWindow::OnPTKShBasis));
     
-    m_pRadiobtnOriginalBasis->SetValue           (isShBasis(0));
+    //m_pRadiobtnOriginalBasis->SetValue           (isShBasis(0));
     m_pRadiobtnDescoteauxBasis->SetValue         (isShBasis(1));
     m_pRadiobtnTournierBasis->SetValue           (isShBasis(2));
-    m_pRadiobtnPTKBasis->SetValue                (isShBasis(3));
+    //m_pRadiobtnPTKBasis->SetValue                (isShBasis(3));
     
 }
 
@@ -1387,9 +1401,9 @@ void ODFs::updatePropertiesSizer()
     m_psliderLightYPosition->Enable(false);
     m_psliderLightZPosition->SetValue(m_psliderLightZPosition->GetMin());
     m_psliderLightZPosition->Enable(false);
-    m_psliderScalingFactor->SetValue(m_psliderScalingFactor->GetMin());
-    m_psliderScalingFactor->Enable (false);
-    m_pRadiobtnPTKBasis->Enable(false);
+    //m_psliderScalingFactor->SetValue(m_psliderScalingFactor->GetMin());
+    //m_psliderScalingFactor->Enable (false);
+    //m_pRadiobtnPTKBasis->Enable(false);
     m_pradiobtnMainAxis->Enable(true);
 
     if(!isDisplayShape(AXIS))

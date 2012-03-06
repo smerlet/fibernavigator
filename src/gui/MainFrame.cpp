@@ -14,6 +14,7 @@
 
 #include "MainFrame.h"
 #include "PropertiesWindow.h"
+#include "TrackingWindow.h"
 #include "ToolBar.h"
 #include "MenuBar.h"
 #include "MainCanvas.h"
@@ -22,12 +23,14 @@
 #include "SelectionEllipsoid.h"
 #include "../dataset/Anatomy.h"
 #include "../dataset/Fibers.h"
+#include "../dataset/FibersGroup.h"
 #include "../dataset/ODFs.h"
 #include "../dataset/SplinePoint.h"
 #include "../dataset/Surface.h"
 #include "../dataset/Tensors.h"
 #include "../gfx/TheScene.h"
 #include "../main.h"
+#include "../Logger.h"
 #include "../misc/IsoSurface/CIsoSurface.h"
 
 #define FIBERS_INFO_GRID_COL_SIZE              1
@@ -68,6 +71,12 @@ EVT_COMMAND( ID_GL_MAIN,  wxEVT_NAVGL_EVENT,                MainFrame::onGLEvent
 EVT_SLIDER( ID_X_SLIDER,                                    MainFrame::onSliderMoved        )
 EVT_SLIDER( ID_Y_SLIDER,                                    MainFrame::onSliderMoved        )
 EVT_SLIDER( ID_Z_SLIDER,                                    MainFrame::onSliderMoved        )
+
+// mouse click in one of the three navigation windows
+EVT_COMMAND( ID_GL_NAV_X, wxEVT_NAVGL_EVENT,                MainFrame::onGLEvent            )
+EVT_COMMAND( ID_GL_NAV_Y, wxEVT_NAVGL_EVENT,                MainFrame::onGLEvent            )
+EVT_COMMAND( ID_GL_NAV_Z, wxEVT_NAVGL_EVENT,                MainFrame::onGLEvent            )
+EVT_COMMAND( ID_GL_MAIN,  wxEVT_NAVGL_EVENT,                MainFrame::onGLEvent            )
 
 // KDTREE thread finished
 EVT_MENU( KDTREE_EVENT,                                     MainFrame::onKdTreeThreadFinished )
@@ -145,7 +154,7 @@ MainFrame::MainFrame(wxWindow           *i_parent,
     /*
      * Set OpenGL attributes
      */
-    m_pDatasetHelper->printDebug( _T( "Initializing OpenGL" ), 1 );
+    Logger::getInstance()->print( wxT( "Initializing OpenGL" ), LOGLEVEL_MESSAGE );
     GLboolean doubleBuffer = GL_TRUE;
 #ifdef __WXMSW__
     int *gl_attrib = NULL;
@@ -161,7 +170,7 @@ MainFrame::MainFrame(wxWindow           *i_parent,
 #endif
     if( ! doubleBuffer )
     {
-        m_pDatasetHelper->printDebug( _T( "don't have double buffer, disabling" ), 1 );
+        Logger::getInstance()->print( wxT( "Do not have double buffer, disabling" ), LOGLEVEL_MESSAGE );
 #ifdef __WXGTK__
         gl_attrib[9] = None;
 #endif
@@ -195,7 +204,7 @@ MainFrame::MainFrame(wxWindow           *i_parent,
     m_pLeftMainSizer     = new wxBoxSizer( wxVERTICAL   ); // Contains the navSizer adn the objectsizer.
     m_pNavSizer          = new wxBoxSizer( wxHORIZONTAL ); // Contains the 3 navigation windows with there respectiv sliders.
     m_pListSizer         = new wxBoxSizer( wxVERTICAL   ); // Contains the list and the tree
-    m_pObjectSizer       = new wxBoxSizer( wxHORIZONTAL ); // Contains the listSizer and the propertiesSizer
+    m_pObjectSizer       = new wxBoxSizer( wxHORIZONTAL ); // Contains the listSizer and the prop sizer
 
     wxBoxSizer *l_xSizer= new wxBoxSizer( wxVERTICAL );
     wxBoxSizer *l_ySizer= new wxBoxSizer( wxVERTICAL );
@@ -203,10 +212,22 @@ MainFrame::MainFrame(wxWindow           *i_parent,
 
     wxBoxSizer *l_propSizer = new wxBoxSizer( wxVERTICAL );
     
-    m_pPropertiesWindow = new PropertiesWindow(this, wxID_ANY, wxDefaultPosition, wxSize(220,350)); // Contains Scene Objects properties
+    //Notebook
+    m_tab = new wxNotebook(this, wxID_ANY, wxDefaultPosition, wxSize(220,350), 0);
+
+    m_pPropertiesWindow = new PropertiesWindow(m_tab, this, wxID_ANY, wxDefaultPosition, wxSize(220,350)); // Contains Scene Objects properties
+    m_pTrackingWindow = new TrackingWindow(m_tab, this, wxID_ANY, wxDefaultPosition, wxSize(220,350)); // Contains realtime tracking properties
+    
+    //Add RTT Panel
+    m_tab->AddPage(m_pPropertiesWindow,_T("Properties"));
+    m_tab->AddPage(m_pTrackingWindow,_T("Realtime tracking"));
+    l_propSizer->Add(m_tab,1, wxALL | wxEXPAND);
     
     m_pPropertiesWindow->SetScrollbars( 10, 10, 50, 50 );
     m_pPropertiesWindow->EnableScrolling(false,true);
+
+    m_pTrackingWindow->SetScrollbars( 10, 10, 50, 50 );
+    m_pTrackingWindow->EnableScrolling(false,true);
 
     l_zSizer->Add( m_pGL0,     1, wxALL | wxFIXED_MINSIZE, 2 );
     l_zSizer->Add( m_pZSlider, 0, wxALL,                   2 );
@@ -224,14 +245,19 @@ MainFrame::MainFrame(wxWindow           *i_parent,
     m_pListSizer->Add( m_pTreeWidget,   1, wxALL | wxEXPAND,  1 );
     
     l_propSizer->Add(m_pPropertiesWindow, 0, wxALL | wxEXPAND, 0);
-
+    l_propSizer->Add(m_pTrackingWindow, 0, wxALL | wxEXPAND, 0);
+    
     m_pObjectSizer->Add(m_pListSizer, 1, wxALL | wxEXPAND, 0);
-    m_pObjectSizer->Add(l_propSizer, 0, wxALL | wxEXPAND, 0);
+    m_pObjectSizer->Add(l_propSizer, 0, wxALL  | wxEXPAND, 0);
+
+    
+
     wxBoxSizer *l_spaceSizer = new wxBoxSizer(wxVERTICAL);
     l_spaceSizer->SetMinSize(wxSize(15,-1));
     m_pObjectSizer->Add(l_spaceSizer, 0, wxALL | wxFIXED_MINSIZE, 0);
 
     l_propSizer->Layout();
+
     
     m_pObjectSizer->SetMinSize( wxSize(520,15));
 
@@ -243,6 +269,7 @@ MainFrame::MainFrame(wxWindow           *i_parent,
     m_pMainSizer->Add( m_pMainGL, 1, wxEXPAND | wxALL, 2 );
 
     m_pPropertiesWindow->Fit();
+    m_pTrackingWindow->Fit();
     this->SetBackgroundColour(*wxLIGHT_GREY);
     this->SetSizer( m_pMainSizer );
     m_pMainSizer->SetSizeHints( this );
@@ -269,8 +296,8 @@ MainFrame::MainFrame(wxWindow           *i_parent,
 MainFrame::~MainFrame()
 {
     m_pTimer->Stop();
-    m_pDatasetHelper->printDebug( _T( "main frame destructor" ), 0 );
-    m_pDatasetHelper->printDebug( _T( "timer stopped" ), 0 );
+    Logger::getInstance()->print( wxT( "MainFrame destructor" ), LOGLEVEL_DEBUG );
+    Logger::getInstance()->print( wxT( "Timer stopped" ), LOGLEVEL_DEBUG );
 	if (m_pTimer != NULL)
     {
         delete m_pTimer;
@@ -279,6 +306,11 @@ MainFrame::~MainFrame()
     {
         delete m_pDatasetHelper;
     }
+}
+
+long MainFrame::getCurrentListItem()
+{
+	return m_currentListItem;
 }
 
 void MainFrame::onLoad( wxCommandEvent& WXUNUSED(event) )
@@ -366,6 +398,51 @@ bool MainFrame::loadIndex( int i_index )
     return true;
 }
 
+//
+//This function creates an Anatomy from scratch
+//
+void MainFrame::createNewAnatomy( int dataType )
+{
+	// ask user for a name
+	wxString l_givenName = wxT("Anatomy");
+    wxTextEntryDialog dialog(this, _T( "Please enter a new name" ) );
+    dialog.SetValue( l_givenName );
+    if( ( dialog.ShowModal() == wxID_OK ) && ( dialog.GetValue() != _T( "" ) ) )
+	{
+        l_givenName = dialog.GetValue();
+	}
+
+	//create the anatomy
+	Anatomy* l_newAnatomy = new Anatomy( m_pDatasetHelper, dataType );
+	l_newAnatomy->setName( l_givenName );
+
+#ifdef __WXMAC__
+    // insert at zero is a well-known bug on OSX, so we append there...
+    // http://trac.wxwidgets.org/ticket/4492
+    long l_id = m_pDatasetHelper->m_mainFrame->m_pListCtrl->GetItemCount();
+#else
+    long l_id = 0;
+#endif
+	m_pDatasetHelper->m_mainFrame->m_pListCtrl->InsertItem( l_id, wxT( "" ), 0 );
+	m_pDatasetHelper->m_mainFrame->m_pListCtrl->SetItem( l_id, 1, l_newAnatomy->getName() );
+	m_pDatasetHelper->m_mainFrame->m_pListCtrl->SetItem( l_id, 2, wxT( "0.00" ) );
+	m_pDatasetHelper->m_mainFrame->m_pListCtrl->SetItem( l_id, 3, wxT( "" ), 1 );
+	m_pDatasetHelper->m_mainFrame->m_pListCtrl->SetItemData( l_id, (long) l_newAnatomy );
+	m_pDatasetHelper->m_mainFrame->m_pListCtrl->SetItemState( l_id, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED );
+
+    refreshAllGLWidgets();
+}
+
+void MainFrame::onNewAnatomyByte( wxCommandEvent& WXUNUSED(event) )
+{
+	createNewAnatomy( HEAD_BYTE );
+}
+
+void MainFrame::onNewAnatomyRGB( wxCommandEvent& WXUNUSED(event) )
+{
+	createNewAnatomy( RGB );
+}
+
 void MainFrame::onReloadShaders( wxCommandEvent& WXUNUSED(event) )
 {
     m_pDatasetHelper->m_scheduledReloadShaders = true;
@@ -374,6 +451,8 @@ void MainFrame::onReloadShaders( wxCommandEvent& WXUNUSED(event) )
 
 void MainFrame::onSave( wxCommandEvent& WXUNUSED(event) )
 {
+    Logger::getInstance()->print( _T("Event triggered - MainFrame::onSave"), LOGLEVEL_DEBUG );
+
     wxString caption         = wxT( "Choose a file" );
     wxString wildcard        = wxT( "Scene files (*.scn)|*.scn|*.*|*.*" );
     wxString defaultDir      = wxEmptyString;
@@ -398,13 +477,13 @@ void MainFrame::onSave( wxCommandEvent& WXUNUSED(event) )
 
 void MainFrame::onSaveFibers( wxCommandEvent& WXUNUSED(event) )
 {
+    Logger::getInstance()->print( _T("Event triggered - MainFrame::onSaveFibers"), LOGLEVEL_DEBUG );
+
     if( !m_pDatasetHelper->m_fibersLoaded )
     {
         return;
     }
-    Fibers* l_fibers = NULL;
-    m_pDatasetHelper->getFiberDataset( l_fibers );
-
+ 
     wxString caption         = wxT( "Choose a file" );
     wxString wildcard        = wxT( "VTK fiber files (*.fib)|*.fib|DMRI fiber files (*.fib)|*.fib|*.*|*.*" );
     wxString defaultDir      = wxEmptyString;
@@ -413,24 +492,53 @@ void MainFrame::onSaveFibers( wxCommandEvent& WXUNUSED(event) )
     dialog.SetFilterIndex( 0 );
     dialog.SetDirectory( m_pDatasetHelper->m_lastPath );
 
-    if( dialog.ShowModal() == wxID_OK )
+	if (m_pCurrentSceneObject != NULL && m_currentListItem != -1)
     {
-        m_pDatasetHelper->m_lastPath = dialog.GetDirectory();
-        printf("%d\n",dialog.GetFilterIndex());
-        if (dialog.GetFilterIndex()==1)
-        {
-             l_fibers->saveDMRI( dialog.GetPath() );
-        }
-        else
-        {
-            l_fibers->save( dialog.GetPath() );
-        }
-    }
+		DatasetInfo* pDatasetInfo = ((DatasetInfo*)m_pCurrentSceneObject);
+		if( dialog.ShowModal() == wxID_OK )
+		{
+			m_pDatasetHelper->m_lastPath = dialog.GetDirectory();
+			printf("%d\n",dialog.GetFilterIndex());
+			
+			if( pDatasetInfo->getType() == FIBERS )
+			{
+				Fibers* l_fibers = NULL;
+				m_pDatasetHelper->getSelectedFiberDataset( l_fibers );
+				if( l_fibers )
+				{
+					if (dialog.GetFilterIndex()==1)
+					{
+						l_fibers->saveDMRI( dialog.GetPath() );	
+					}
+					else
+					{
+						l_fibers->save( dialog.GetPath() );
+					}
+				}
+			}
+			else if( pDatasetInfo->getType() == FIBERSGROUP )
+			{
+				FibersGroup* l_fibersGroup = NULL;
+				m_pDatasetHelper->getFibersGroupDataset( l_fibersGroup );
+				
+				if (dialog.GetFilterIndex()==1)
+				{
+					l_fibersGroup->saveDMRI( dialog.GetPath() );	
+				}
+				else
+				{
+					l_fibersGroup->save( dialog.GetPath() );
+				}
+			}
+			
+		}
+	}
 }
-
 
 void MainFrame::onSaveDataset( wxCommandEvent& WXUNUSED(event) )
 {
+    Logger::getInstance()->print( _T("Event triggered - MainFrame::onSaveDataset"), LOGLEVEL_DEBUG );
+
     if( m_pCurrentSceneObject != NULL && m_currentListItem != -1 )
     {
         if( ((DatasetInfo*)m_pCurrentSceneObject)->getType() < MESH )
@@ -662,6 +770,250 @@ void MainFrame::onToggleDrawPointsMode( wxCommandEvent& event )
     refreshAllGLWidgets();
 }
 
+void MainFrame::onSelectDrawer( wxCommandEvent& event )
+{
+	if( m_pDatasetHelper->m_theScene == NULL )
+	{
+		return;
+	}
+
+	m_pDatasetHelper->m_isDrawerToolActive = true;
+
+    updateDrawerToolbar();
+}
+
+void MainFrame::onSwitchDrawer( wxCommandEvent& event )
+{
+    if( m_pDatasetHelper->m_theScene == NULL )
+	{
+		return;
+	}
+    
+    m_pDatasetHelper->m_isDrawerToolActive = !m_pDatasetHelper->m_isDrawerToolActive;
+    
+    updateDrawerToolbar();
+}
+
+void MainFrame::updateDrawerToolbar()
+{
+    m_pDatasetHelper->m_isRulerToolActive = false;
+    
+    m_pToolBar->m_txtRuler->Disable();
+    
+	m_pToolBar->EnableTool(m_pToolBar->m_toggleDrawRound->GetId(), m_pDatasetHelper->m_isDrawerToolActive);
+	m_pToolBar->EnableTool(m_pToolBar->m_toggleDraw3d->GetId(), m_pDatasetHelper->m_isDrawerToolActive);
+	m_pToolBar->EnableTool(m_pToolBar->m_selectPen->GetId(), m_pDatasetHelper->m_isDrawerToolActive);
+	m_pToolBar->EnableTool(m_pToolBar->m_selectEraser->GetId(), m_pDatasetHelper->m_isDrawerToolActive);
+    m_pToolBar->EnableTool(m_pToolBar->m_selectColorPicker->GetId(), m_pDatasetHelper->m_isDrawerToolActive);
+    
+    // Check if the current anatomy supports RGB
+    Anatomy *pTempAnat = (Anatomy*) m_pCurrentSceneObject;
+    
+    if( pTempAnat != NULL && pTempAnat->getType() == RGB )
+    {
+        m_pDatasetHelper->m_canUseColorPicker = true;
+    }
+    else
+    {
+        m_pDatasetHelper->m_canUseColorPicker = false;
+    }
+    
+	refreshAllGLWidgets();
+}
+
+void MainFrame::onToggleDrawRound( wxCommandEvent& event )
+{
+    if( m_pDatasetHelper->m_theScene == NULL )
+    {
+        return;
+    }
+    m_pDatasetHelper->m_drawRound = !m_pDatasetHelper->m_drawRound;
+    refreshAllGLWidgets();
+}
+
+void MainFrame::onToggleDraw3d( wxCommandEvent& event )
+{
+    if( m_pDatasetHelper->m_theScene == NULL )
+    {
+        return;
+    }
+    m_pDatasetHelper->m_draw3d = !m_pDatasetHelper->m_draw3d;
+    refreshAllGLWidgets();
+}
+
+void MainFrame::onSelectColorPicker( wxCommandEvent& event )
+{
+    if( m_pDatasetHelper->m_theScene == NULL )
+	{
+        return;
+	}
+
+    wxColourData l_colorData;
+
+    for( int i = 0; i < 10; ++i )
+    {
+        wxColour l_color(i * 28, i * 28, i * 28);
+        l_colorData.SetCustomColour(i, l_color);
+    }
+
+    int i = 10;
+    wxColour l_color ( 255, 0, 0 );
+    l_colorData.SetCustomColour( i++, l_color );
+    wxColour l_color1( 0, 255, 0 );
+    l_colorData.SetCustomColour( i++, l_color1 );
+    wxColour l_color2( 0, 0, 255 );
+    l_colorData.SetCustomColour( i++, l_color2 );
+    wxColour l_color3( 255, 255, 0 );
+    l_colorData.SetCustomColour( i++, l_color3 );
+    wxColour l_color4( 255, 0, 255 );
+    l_colorData.SetCustomColour( i++, l_color4 );
+    wxColour l_color5( 0, 255, 255 );
+    l_colorData.SetCustomColour( i++, l_color5 );
+
+    wxColourDialog dialog( this, &l_colorData );
+    if( dialog.ShowModal() == wxID_OK )
+    {
+        wxColourData l_retData = dialog.GetColourData();
+        m_pDatasetHelper->m_drawColor = l_retData.GetColour();
+		wxRect fullImage(0, 0, 16, 16); //this is valid as long as toolbar items use 16x16 icons
+		m_pDatasetHelper->m_drawColorIcon.SetRGB(fullImage, 
+											     m_pDatasetHelper->m_drawColor.Red(), 
+											     m_pDatasetHelper->m_drawColor.Green(), 
+											     m_pDatasetHelper->m_drawColor.Blue() );
+		m_pToolBar->SetToolNormalBitmap(m_pToolBar->m_selectColorPicker->GetId(), wxBitmap(m_pDatasetHelper->m_drawColorIcon));
+    }
+    else
+    {
+        return;
+    }
+
+/*
+    if( m_mainFrame->m_currentListItem != -1 )
+    {
+        DatasetInfo *l_info = (DatasetInfo*)m_mainFrame->m_pCurrentSceneObject;
+        if( l_info->getType() == MESH || l_info->getType() == ISO_SURFACE || l_info->getType() == SURFACE || l_info->getType() == VECTORS)
+        {
+            l_info->setColor( l_col );
+            l_info->setuseTex( false );
+            m_mainFrame->m_pListCtrl->SetItem( m_mainFrame->m_currentListItem, 2, wxT( "(") + wxString::Format( wxT( "%.2f" ), l_info->getThreshold() ) + wxT( ")" ) );           
+        }
+    }
+    else if ( m_mainFrame->m_pDatasetHelper->m_lastSelectedObject != NULL )
+    {
+        SelectionObject *l_selObj = (SelectionObject*)m_mainFrame->m_pCurrentSceneObject;
+        if (!l_selObj->getIsMaster())
+        {
+            wxTreeItemId l_parentId = m_mainFrame->m_pTreeWidget->GetItemParent( m_mainFrame->m_pDatasetHelper->m_lastSelectedObject->GetId());
+            l_selObj = (SelectionObject*)m_mainFrame->m_pTreeWidget->GetItemData(l_parentId);
+        }
+        l_selObj->setFiberColor( l_col);
+        l_selObj->setIsDirty( true );
+        m_mainFrame->m_pDatasetHelper->m_selBoxChanged = true;
+    }    
+    m_mainFrame->refreshAllGLWidgets();*/
+}
+
+void MainFrame::onSelectStroke1( wxCommandEvent& event )
+{
+	if( m_pDatasetHelper->m_theScene == NULL )
+	{
+		return;
+	}
+	m_pDatasetHelper->m_drawSize = 1;
+	
+	refreshAllGLWidgets();
+}
+
+void MainFrame::onSelectStroke2( wxCommandEvent& event )
+{
+	if( m_pDatasetHelper->m_theScene == NULL )
+	{
+		return;
+	}
+	m_pDatasetHelper->m_drawSize = 2;
+	
+	refreshAllGLWidgets();
+}
+
+void MainFrame::onSelectStroke3( wxCommandEvent& event )
+{
+	if( m_pDatasetHelper->m_theScene == NULL )
+	{
+		return;
+	}
+	m_pDatasetHelper->m_drawSize = 3;
+	
+	refreshAllGLWidgets();
+}
+
+void MainFrame::onSelectStroke4( wxCommandEvent& event )
+{
+	if( m_pDatasetHelper->m_theScene == NULL )
+	{
+		return;
+	}
+	m_pDatasetHelper->m_drawSize = 4;
+	
+	refreshAllGLWidgets();
+}
+
+void MainFrame::onSelectStroke5( wxCommandEvent& event )
+{
+	if( m_pDatasetHelper->m_theScene == NULL )
+	{
+		return;
+	}
+	m_pDatasetHelper->m_drawSize = 5;
+	
+	refreshAllGLWidgets();
+}
+
+void MainFrame::onSelectStroke7( wxCommandEvent& event )
+{
+	if( m_pDatasetHelper->m_theScene == NULL )
+	{
+		return;
+	}
+	m_pDatasetHelper->m_drawSize = 7;
+	
+	refreshAllGLWidgets();
+}
+
+void MainFrame::onSelectStroke10( wxCommandEvent& event )
+{
+	if( m_pDatasetHelper->m_theScene == NULL )
+	{
+		return;
+	}
+	m_pDatasetHelper->m_drawSize = 10;
+	
+	refreshAllGLWidgets();
+}
+
+void MainFrame::onSelectPen( wxCommandEvent& event )
+{
+	if( m_pDatasetHelper->m_theScene == NULL )
+	{
+		return;
+	}
+	m_pDatasetHelper->m_drawMode = m_pDatasetHelper->DRAWMODE_PEN;
+	//glBindTexture(GL_TEXTURE_3D, 1);    //Prepare the existing texture for updates
+	
+	refreshAllGLWidgets();
+}
+
+void MainFrame::onSelectEraser( wxCommandEvent& event )
+{
+	if( m_pDatasetHelper->m_theScene == NULL )
+	{
+		return;
+	}
+	m_pDatasetHelper->m_drawMode = m_pDatasetHelper->DRAWMODE_ERASER;
+	//glBindTexture(GL_TEXTURE_3D, 1);    //Prepare the existing texture for updates
+
+	refreshAllGLWidgets();
+}
+
 void MainFrame::onMoveBoundaryPointsLeft( wxCommandEvent& WXUNUSED(event) )
 {
     moveBoundaryPoints(5);
@@ -758,7 +1110,6 @@ void MainFrame::displayPropertiesSheet()
 void MainFrame::onNewSelectionEllipsoid( wxCommandEvent& WXUNUSED(event) )
 {
     createNewSelectionObject( ELLIPSOID_TYPE );
-    m_pDatasetHelper->m_isBoxCreated = true;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -768,8 +1119,8 @@ void MainFrame::onNewSelectionEllipsoid( wxCommandEvent& WXUNUSED(event) )
 ///////////////////////////////////////////////////////////////////////////
 void MainFrame::onNewSelectionBox( wxCommandEvent& WXUNUSED(event) )
 {
-    createNewSelectionObject( BOX_TYPE );    
-    m_pDatasetHelper->m_isBoxCreated = true;
+    createNewSelectionObject( BOX_TYPE );
+    m_pTrackingWindow->m_pBtnStart->Enable(true);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -791,7 +1142,8 @@ void MainFrame::createNewSelectionObject( ObjectType i_newSelectionObjectType )
     if( treeSelectedNew( l_treeSelectionId ) == TYPE_SELECTION_MASTER && 
         !m_pDatasetHelper->m_pSelectionTree->isEmpty() )
     {
-        m_pDatasetHelper->printDebug( wxT("Cannot add more than one root selection item."), 2 );
+        // TODO use good print dbug version
+        //m_pDatasetHelper->printDebug( wxT("Cannot add more than one root selection item."), 2 );
         return;
     }
     
@@ -929,7 +1281,7 @@ void MainFrame::onNewSplineSurface( wxCommandEvent& WXUNUSED(event) )
 {
     //Generate KdTree for Spline Surface
     Fibers* pTmpFib = NULL;
-    m_pDatasetHelper->getFiberDataset(pTmpFib);
+    m_pDatasetHelper->getSelectedFiberDataset(pTmpFib);
     if(pTmpFib != NULL)
     {
         pTmpFib->generateKdTree();
@@ -949,7 +1301,7 @@ void MainFrame::onNewSplineSurface( wxCommandEvent& WXUNUSED(event) )
 
     if( m_pDatasetHelper->m_fibersLoaded )
     {
-        m_pDatasetHelper->getFiberDataset( l_fibers );
+        m_pDatasetHelper->getSelectedFiberDataset( l_fibers );
     }
     if( m_pDatasetHelper->m_showSagittal )
     {
@@ -1117,19 +1469,57 @@ void MainFrame::onToggleFilterIso( wxCommandEvent& WXUNUSED(event) )
 
 void MainFrame::onInvertFibers( wxCommandEvent& WXUNUSED(event) )
 {
-    m_pDatasetHelper->invertFibers();
+	if (m_pCurrentSceneObject != NULL && m_currentListItem != -1)
+    {
+		DatasetInfo* pDatasetInfo = ((DatasetInfo*)m_pCurrentSceneObject);
+		if( pDatasetInfo->getType() == FIBERS )
+		{
+			Fibers* l_fibers = NULL;
+			m_pDatasetHelper->getSelectedFiberDataset( l_fibers );
+			if( l_fibers != NULL)
+			{
+				l_fibers->invertFibers();
+			}
+		}
+		else if ( pDatasetInfo->getType() == FIBERSGROUP )
+		{
+			FibersGroup* l_fibersGroup = NULL;
+			m_pDatasetHelper->getFibersGroupDataset( l_fibersGroup );
+			if( l_fibersGroup != NULL )
+			{
+				l_fibersGroup->invertFibers();
+			}			
+		}
+	}
+
     m_pDatasetHelper->m_selBoxChanged = true;
     refreshAllGLWidgets();
 }
 
 void MainFrame::onUseFakeTubes( wxCommandEvent& WXUNUSED(event) )
 {
-    m_pDatasetHelper->m_useFakeTubes = !m_pDatasetHelper->m_useFakeTubes;
-    Fibers* l_fiber;
-    if( m_pDatasetHelper->getFiberDataset( l_fiber ) )
+	if (m_pCurrentSceneObject != NULL && m_currentListItem != -1)
     {
-        l_fiber->switchNormals( !m_pDatasetHelper->m_useFakeTubes );
-    }
+		DatasetInfo* pDatasetInfo = ((DatasetInfo*)m_pCurrentSceneObject);
+		if( pDatasetInfo->getType() == FIBERS )
+		{
+			Fibers* l_fibers = NULL;
+			m_pDatasetHelper->getSelectedFiberDataset( l_fibers ) ;
+			if(l_fibers != NULL)
+			{
+				l_fibers->useFakeTubes();
+			}
+		}
+		else if ( pDatasetInfo->getType() == FIBERSGROUP )
+		{
+			FibersGroup* l_fibersGroup = NULL;
+			m_pDatasetHelper->getFibersGroupDataset( l_fibersGroup );
+			if( l_fibersGroup != NULL )
+			{
+				l_fibersGroup->useFakeTubes();
+			}			
+		}
+	}
     refreshAllGLWidgets();
 }
 
@@ -1151,17 +1541,41 @@ void MainFrame::onClearToBlack( wxCommandEvent& WXUNUSED(event) )
     refreshAllGLWidgets();
 }
 
-void MainFrame::onRulerTool( wxCommandEvent& WXUNUSED(event) )
+void MainFrame::onSelectNormalPointer( wxCommandEvent& WXUNUSED(event) )
 {
-    m_pDatasetHelper->m_isRulerToolActive = !m_pDatasetHelper->m_isRulerToolActive;    
-    if (m_pDatasetHelper->m_isRulerToolActive)
-    {
-        m_pToolBar->m_txtRuler->Enable();
-    } 
-    else 
-    {
-        m_pToolBar->m_txtRuler->Disable();
-    }
+	if( m_pDatasetHelper->m_theScene == NULL )
+	{
+		return;
+	}
+
+	m_pDatasetHelper->m_isRulerToolActive = false;
+	m_pDatasetHelper->m_isDrawerToolActive = false;
+
+	m_pToolBar->m_txtRuler->Disable();
+	m_pToolBar->EnableTool(m_pToolBar->m_selectColorPicker->GetId(), false);
+	m_pToolBar->EnableTool(m_pToolBar->m_toggleDrawRound->GetId(), false);
+	m_pToolBar->EnableTool(m_pToolBar->m_toggleDraw3d->GetId(), false);
+	m_pToolBar->EnableTool(m_pToolBar->m_selectPen->GetId(), false);
+	m_pToolBar->EnableTool(m_pToolBar->m_selectEraser->GetId(), false);
+	refreshAllGLWidgets();
+}
+
+void MainFrame::onSelectRuler( wxCommandEvent& WXUNUSED(event) )
+{
+	if( m_pDatasetHelper->m_theScene == NULL )
+	{
+		return;
+	}
+
+	m_pDatasetHelper->m_isRulerToolActive = true;
+	m_pDatasetHelper->m_isDrawerToolActive = false;
+
+    m_pToolBar->m_txtRuler->Enable();
+	m_pToolBar->EnableTool(m_pToolBar->m_selectColorPicker->GetId(), false);
+	m_pToolBar->EnableTool(m_pToolBar->m_toggleDrawRound->GetId(), false);
+	m_pToolBar->EnableTool(m_pToolBar->m_toggleDraw3d->GetId(), false);
+	m_pToolBar->EnableTool(m_pToolBar->m_selectPen->GetId(), false);
+	m_pToolBar->EnableTool(m_pToolBar->m_selectEraser->GetId(), false);
     refreshAllGLWidgets();
 }
 
@@ -1192,19 +1606,70 @@ void MainFrame::onRulerToolDel( wxCommandEvent& WXUNUSED(event) )
 }
 
 void MainFrame::onUseTransparency( wxCommandEvent& WXUNUSED(event) )
-{
-    m_pDatasetHelper->m_useTransparency = !m_pDatasetHelper->m_useTransparency;
+{    
+	if (m_pCurrentSceneObject != NULL && m_currentListItem != -1)
+    {
+		DatasetInfo* pDatasetInfo = ((DatasetInfo*)m_pCurrentSceneObject);
+		if( pDatasetInfo->getType() == FIBERS )
+		{
+			Fibers* l_fibers = NULL;
+			m_pDatasetHelper->getSelectedFiberDataset( l_fibers );
+			if( l_fibers != NULL)
+			{
+				l_fibers->useTransparency();
+
+			}
+		}
+		else if ( pDatasetInfo->getType() == FIBERSGROUP )
+		{
+			FibersGroup* l_fibersGroup = NULL;
+			m_pDatasetHelper->getFibersGroupDataset( l_fibersGroup );
+			if( l_fibersGroup != NULL )
+			{
+				l_fibersGroup->useTransparency();
+			}			
+		}
+	}
     refreshAllGLWidgets();
 }
 
+//////////////////////////////////////////////////////////////////////////
+
+void MainFrame::onUseGeometryShader( wxCommandEvent& event )
+{
+    m_pDatasetHelper->m_useFibersGeometryShader = !m_pDatasetHelper->m_useFibersGeometryShader;
+    refreshAllGLWidgets();
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 void MainFrame::onResetColor(wxCommandEvent& WXUNUSED(event))
 {
-    Fibers* l_fibers = NULL; // Initalize it quiet compiler.
-    if( m_pDatasetHelper->getFiberDataset( l_fibers ) == NULL)
+	if (m_pCurrentSceneObject != NULL && m_currentListItem != -1)
     {
-        return;
-    }
-    l_fibers->resetColorArray();
+		DatasetInfo* pDatasetInfo = ((DatasetInfo*)m_pCurrentSceneObject);
+
+        if( pDatasetInfo->getType() == FIBERS )
+        {
+            Fibers* l_fibers = NULL;
+			m_pDatasetHelper->getSelectedFiberDataset( l_fibers );
+			if( l_fibers  != NULL)
+			{
+				l_fibers->resetColorArray();
+			}
+		}
+		else if ( pDatasetInfo->getType() == FIBERSGROUP )
+		{
+			FibersGroup* l_fibersGroup = NULL;
+			m_pDatasetHelper->getFibersGroupDataset( l_fibersGroup );
+			if( l_fibersGroup != NULL )
+			{
+				l_fibersGroup->resetFibersColor();
+			}
+
+		}
+	}
+    
     m_pDatasetHelper->m_selBoxChanged = true;
     refreshAllGLWidgets();
 }
@@ -1273,6 +1738,7 @@ void MainFrame::onAbout( wxCommandEvent& WXUNUSED(event) )
     date = date.BeforeLast( '$' );
     (void)wxMessageBox( _T("Fiber Navigator\nAuthors:http://code.google.com/p/fibernavigator/people/list \n\n" )
                         + rev + _T( "\n" ) + date, _T( "About Fiber Navigator" ) );
+    
 }
 
 void MainFrame::onShortcuts( wxCommandEvent& WXUNUSED(event) )
@@ -1291,6 +1757,18 @@ void MainFrame::onShortcuts( wxCommandEvent& WXUNUSED(event) )
                     + _T( "   ctrl + shift + cursor up/down/left/right, page up/down" )
                     + nl + _T( "Delete selected object and all sub objects:" ) + nl
                     + _T( "   del" ) + nl );
+}
+
+void MainFrame::onWarningsInformations( wxCommandEvent& WXUNUSED(event) )
+{
+	wxString nl = _T( "\n" );
+    (void)wxMessageBox(
+		_T("Please take note that the values of the settings used when using the fibers group may not reflect the current value of the settings of all fibers.") 
+		+ nl + nl
+		+ _T("Since it is possible to modify a setting globally, then to modify it locally to a fiber bundle, it is impossible to have only one value reflecting the different values of each bundle.") 
+		+ nl + nl
+		+ _T("Therefore, when using the fibers group, all settings are set to their default values. For example, if you want to set the minimal length of the displayed fibers to the lowest possible value, even if the slider is displayed as being to the lowest value, you have to click the Apply button to make sure that it is applied."),
+		wxT("Warnings Informations about Fibers Group functionalities"));
 }
 
 void MainFrame::onScreenshot( wxCommandEvent& WXUNUSED(event) )
@@ -1400,10 +1878,18 @@ void MainFrame::refreshAllGLWidgets()
 
 void MainFrame::refreshViews()
 {
+    m_tab->Fit();
+    m_tab->Layout();
+
     m_pPropertiesWindow->Fit();
     m_pPropertiesWindow->AdjustScrollbars();
-
     m_pPropertiesWindow->Layout();
+
+    m_pTrackingWindow->Fit();
+    m_pTrackingWindow->AdjustScrollbars();
+    m_pTrackingWindow->Layout();
+
+
     displayPropertiesSheet();
     if ( m_pMainGL )
     {
@@ -1470,6 +1956,8 @@ void MainFrame::updateStatusBar()
 
 void MainFrame::onActivateListItem( wxListEvent& event )
 {
+    Logger::getInstance()->print( _T( "Event triggered - MainFrame::onActivateListItem" ), LOGLEVEL_DEBUG );
+
     int l_item = event.GetIndex();
     m_pTreeWidget->UnselectAll();
     DatasetInfo* l_info = (DatasetInfo*)m_pListCtrl->GetItemData( l_item );
@@ -1513,9 +2001,30 @@ void MainFrame::deleteListItem()
     if (m_pCurrentSceneObject != NULL && m_currentListItem != -1)
     {       
         long tmp = m_currentListItem;
+		if ((((DatasetInfo*)m_pListCtrl->GetItemData( m_currentListItem))->getType() == FIBERSGROUP))
+		{
+			FibersGroup* pFibersGroup = NULL;
+			m_pDatasetHelper->getFibersGroupDataset(pFibersGroup);
+			if(pFibersGroup != NULL)
+			{
+				if(!pFibersGroup->OnDeleteFibers())
+					return;
+			}
+		}
         if (((DatasetInfo*)m_pListCtrl->GetItemData( m_currentListItem))->getType() == FIBERS)
         {            
-            m_pDatasetHelper->m_selBoxChanged = true;
+			FibersGroup* pFibersGroup = NULL;
+			m_pDatasetHelper->getFibersGroupDataset(pFibersGroup);
+			if(pFibersGroup != NULL)
+			{
+				Fibers* pFibers = NULL;
+				m_pDatasetHelper->getSelectedFiberDataset(pFibers);
+				if(pFibers != NULL)
+				{
+					pFibersGroup->removeFibersSet(pFibers);
+				}
+			}
+			m_pDatasetHelper->m_selBoxChanged = true;
         }
         else if (((DatasetInfo*)m_pListCtrl->GetItemData( m_currentListItem))->getType() == SURFACE)
         {
@@ -1541,6 +2050,8 @@ void MainFrame::deleteListItem()
 
 void MainFrame::onSelectListItem( wxListEvent& event )
 {
+    Logger::getInstance()->print( _T( "Event triggered - MainFrame::onSelectListItem" ), LOGLEVEL_DEBUG );
+
     int l_item = event.GetIndex();
     m_pTreeWidget->UnselectAll();
     DatasetInfo *l_info = (DatasetInfo*)m_pListCtrl->GetItemData( l_item) ;
@@ -1556,12 +2067,29 @@ void MainFrame::onSelectListItem( wxListEvent& event )
             m_pListCtrl->SetItem( l_item,2,wxString::Format( wxT( "%.2f" ), l_info->getThreshold() * l_info->getOldMax() ) );
         }            
     }
+	if( l_info->getType() == FIBERS )
+	{
+		Fibers* pFibers = (Fibers*)l_info;
+		if( pFibers )
+		{
+			pFibers->updateColorationMode();
+		}
+	}
     m_pLastSelectedSceneObject = l_info;
     m_lastSelectedListItem = l_item;
+    
+    // Check if it is RGB
+    if( l_info->getType() == RGB )
+    {
+        m_pDatasetHelper->m_canUseColorPicker = true;
+    }
+    else
+    {
+        m_pDatasetHelper->m_canUseColorPicker = false;
+    }
+    
     refreshAllGLWidgets();
 }
-
-
 
 void MainFrame::onListMenuName( wxCommandEvent&  WXUNUSED(event) )
 {
@@ -1733,6 +2261,7 @@ void MainFrame::onSelectTreeItem( wxTreeEvent& WXUNUSED(event) )
                 }
                 break;
         }    
+
 #ifdef __WXMSW__
         if (m_currentListItem != -1)
         {       
@@ -1951,6 +2480,11 @@ void MainFrame::doOnSize()
     }
     m_pPropertiesWindow->SetMinSize(wxSize(220, l_clientSize.y - 236));
     m_pPropertiesWindow->GetSizer()->SetDimension(0,0,220, l_clientSize.y - 236);
+
+    m_pTrackingWindow->SetMinSize(wxSize(220, l_clientSize.y - 236));
+    m_pTrackingWindow->GetSizer()->SetDimension(0,0,220, l_clientSize.y - 236);
+
+
 }
 
 ///////////////////////////////////////////////////////////////////////////

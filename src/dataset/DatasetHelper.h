@@ -25,7 +25,6 @@
 
 #include "DatasetInfo.h"
 
-
 #include "../gui/SelectionObject.h"
 
 #include "../gui/MainFrame.h"
@@ -39,6 +38,8 @@
 
 #include "../misc/Fantom/FMatrix.h"
 
+#include "../Logger.h"
+
 class MainFrame;
 class DatasetInfo;
 class TheScene;
@@ -48,6 +49,7 @@ class SplinePoint;
 class SelectionObject;
 class SelectionTree;
 class Fibers;
+class FibersGroup;
 class TensorField;
 class Surface;
 
@@ -63,16 +65,22 @@ public:
     virtual ~DatasetHelper();
 
     // Functions
+    //void out_of_memory(); 
     bool load( const int i_index );
-    bool load( wxString    i_filename, 
-               int   i_index     = -1, 
-               const float i_threshold = 0.0f, 
-               const bool  i_active    = true,
-               const bool  i_showFS    = true, 
-               const bool  i_useTex    = true, 
-               const float i_alpha     = 1.0f );
+    bool load( wxString    i_filename,
+               int         i_index		= -1, 
+               const float i_threshold  = 0.0f, 
+               const bool  i_active		= true,
+               const bool  i_showFS		= true, 
+               const bool  i_useTex		= true, 
+               const float i_alpha		= 1.0f,
+			   wxString    i_name		= _T( ""),
+			   int		   i_version	= 1,
+			   const bool  i_isFiberGroup = false,
+			   const bool  i_isScene = false );
+    void finishLoading ( DatasetInfo*, bool isChild = false );
+
     bool loadFmriClusters();
-    void finishLoading ( DatasetInfo* );
     bool loadScene     ( const wxString i_filename );
     bool loadTextFile  ( wxString* i_string, const wxString i_filename );
     bool fileNameExists( const wxString i_filename );
@@ -85,9 +93,7 @@ public:
     void   deleteAllSelectionObjects();
     void   updateAllSelectionObjects();
     Vector mapMouse2World( const int i_x, const int i_y,GLdouble i_projection[16], GLint i_viewport[4], GLdouble i_modelview[16]);
-    Vector mapMouse2WorldBack( const int i_x, const int i_y,GLdouble i_projection[16], GLint i_viewport[4], GLdouble i_modelview[16]);    
-
-    bool invertFibers() { return m_fibersInverted = ! m_fibersInverted; };
+    Vector mapMouse2WorldBack( const int i_x, const int i_y,GLdouble i_projection[16], GLint i_viewport[4], GLdouble i_modelview[16]);   
 
     void createIsoSurface();
     void createDistanceMapAndIso();
@@ -98,18 +104,6 @@ public:
      */
     void treeFinished();
 
-    /*
-     * Helper functions
-     */
-    void printTime();
-    void printwxT  ( const wxString i_string );
-    void printDebug( const wxString i_string, const int i_level );
-    /*
-     * Check for GL error
-     */
-    bool GLError();
-    void printGLError( const wxString function = wxT( "" ) );
-
     void updateView( const float i_x, const float i_y, const float i_z );
 
     void changeZoom( const int i_z );
@@ -117,7 +111,8 @@ public:
 
     void doMatrixManipulation();
 
-    bool getFiberDataset  ( Fibers*  &i_fiber );
+	bool getFibersGroupDataset( FibersGroup* &i_fiberGroup );
+	bool getSelectedFiberDataset ( Fibers* &i_fiber );
     bool getSurfaceDataset( Surface* &i_surface );
     bool getTextureDataset( std::vector< DatasetInfo* > &o_types ); 
     std::vector< float >* getVectorDataset();
@@ -129,6 +124,8 @@ public:
     bool getPointMode()           { return m_pointMode; };
 
     void updateLoadStatus();
+	void updateItemsId();
+	void updateItemsPosition();
 
     void doLicMovie       ( int i_mode );
     void createLicSliceSag( int i_slize );
@@ -137,6 +134,7 @@ public:
     void licMovieHelper();
 
     void increaseAnimationStep();
+    int  m_debugLevel;
 
     /////////////////////////////////////////////////////////////////////////////////
     // general info about the datasets
@@ -147,11 +145,12 @@ public:
     std::vector< float >* m_floatDataset;
     std::vector<Vector>   m_rulerPts;
     bool                  m_isRulerToolActive;
+    bool                  m_isDrawerToolActive;
     double                m_rulerFullLength;
     double                m_rulerPartialLength;
     int                   m_fibersSamplingFactor;
     bool                  m_isSegmentActive;
-    int                      m_SegmentMethod;
+    int                   m_SegmentMethod;
     bool                  m_isFloodfillActive;
     bool                  m_isSelectBckActive;
     bool                  m_isSelectObjActive;
@@ -162,6 +161,18 @@ public:
     bool                  m_isBoxCreated;
     bool                  m_thresSliderMoved;
     bool graphcutReady()  { return (m_isObjfilled && m_isBckfilled && m_isBoxCreated); };
+    bool m_showCrosshair;
+        
+    /////////////////////////////////////////////////////////////////////////////////
+    //RTT vars
+    /////////////////////////////////////////////////////////////////////////////////
+    bool m_isRTTReady;
+    bool m_isRTTDirty;
+    
+	bool m_isRTTActive;
+    bool m_isRandomSeeds;
+	bool m_interpolateTensors;
+	bool m_isFileSelected;
 
 
     float m_xVoxel;
@@ -176,7 +187,8 @@ public:
     bool m_scnFileLoaded;
     bool m_anatomyLoaded;
     bool m_meshLoaded;
-    bool m_fibersLoaded;
+    bool m_fibersGroupLoaded;
+	bool m_fibersLoaded;
     bool m_vectorsLoaded;
     bool m_tensorsFieldLoaded;
     bool m_tensorsLoaded;
@@ -189,7 +201,6 @@ public:
     /////////////////////////////////////////////////////////////////////////////////
     Matrix4fT m_transform;
     bool      m_useVBO;
-    GLenum    m_lastGLError;
     int       m_quadrant;
     int       m_textures;
     //! if set the shaders will be reloaded during next render() call
@@ -205,9 +216,9 @@ public:
 
     int       m_animationStep;
 
-    int       m_debugLevel;
+    
 
-    float     m_frustum[6][4]; // Countains the information of the planes forming the frustum.
+    float     m_frustum[6][4]; // Contains the information of the planes forming the frustum.
     /////////////////////////////////////////////////////////////////////////////////
     // state variables for menu entries
     /////////////////////////////////////////////////////////////////////////////////
@@ -215,8 +226,8 @@ public:
     bool m_showCoronal;
     bool m_showAxial;
 
-    bool m_showCrosshair;
-
+    
+    wxImage m_drawColorIcon;
     float m_xSlize;
     float m_ySlize;
     float m_zSlize;
@@ -226,16 +237,29 @@ public:
     bool  m_useLic;           // Show the lic texture on spline surface.
     bool  m_drawVectors;      // Draw vectors as small lines on spline surface.
     float m_normalDirection;  // Normal direction of the spline surface.
-    bool  m_fibersInverted;
-    bool  m_useFakeTubes;
+    bool  m_geometryShadersSupported;
     bool  m_clearToBlack;
-    bool  m_useTransparency;
+    bool  m_useFibersGeometryShader;
     bool  m_filterIsoSurf;
     int   m_colorMap;
     bool  m_showColorMapLegend;
     bool  m_displayMinMaxCrossSection;
     bool  m_displayGlyphOptions;
-    FibersColorationMode   m_fiberColorationMode;
+
+	
+	enum  DrawMode
+	{
+		DRAWMODE_PEN = 0,
+		DRAWMODE_ERASER = 1,
+        DRAWMODE_INVALID
+	};
+	DrawMode m_drawMode;
+	int     m_drawSize;
+	bool    m_drawRound;
+	bool    m_draw3d;
+    bool    m_canUseColorPicker;
+	wxColor m_drawColor;
+	
 
     bool  m_morphing;
 
@@ -276,9 +300,11 @@ public:
     SelectionObject* m_boxAtCrosshair;
     SplinePoint*     m_lastSelectedPoint;
     SelectionObject* m_lastSelectedObject;
-    MainFrame*       m_mainFrame;
     TheScene*        m_theScene;
+    MainFrame*       m_mainFrame;
     ShaderHelper*    m_shaderHelper;
+    
+    
 };
 
 #define ID_KDTREE_FINISHED    50

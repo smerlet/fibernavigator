@@ -12,11 +12,24 @@
 
 #include <set>
 #include <vector>
+#include <stack>
 using std::set;
 
 class SelectionObject;
 class MainFrame;
 class PropertiesWindow;
+
+struct SubTextureBox {
+    int x;
+	int y;
+	int z;
+	int width;
+	int height;
+	int depth;
+
+	int datasize;
+	std::vector<float> data;
+};
 
 /**
 * This class represents a dataset related to an anatomy file.
@@ -35,6 +48,7 @@ public:
     Anatomy( DatasetHelper *pDatasetHelper, const int type );
     virtual ~Anatomy();
    
+	void add( Anatomy* anatomy);
    
     float at( const int i );
     std::vector<float>* getFloatDataset();
@@ -54,9 +68,16 @@ public:
     void dilate();
     void erode();
     void minimize();
+
+	void writeVoxel( Vector v, int layer, int ds, bool dr, bool d3d, wxColor colorRGB ) { writeVoxel(v.x, v.y, v.z, layer, ds, dr, d3d, colorRGB); };
+	//void eraseVoxel( Vector v, float ds, bool dr, bool d3d ) { eraseVoxel(v.x, v.y, v.z, ds, dr, d3d); };
+	void writeVoxel( const int x, const int y, const int z, const int layer, const int size, const bool isRound, const bool draw3d, wxColor colorRGB );
+	//void eraseVoxel( const int x, const int y, const int z, const int size, const bool isRound, const bool draw3d );
+	SubTextureBox getStrokeBox( const int x, const int y, const int z, const int layer, const int size, const bool draw3d );
+
     void flipAxis( AxisType axe );
-    
-    void draw(){};
+
+	void draw(){};
     
     bool load     ( wxString fileName );
     bool loadNifti( wxString fileName );
@@ -89,7 +110,11 @@ public:
         m_pToggleSegment->SetValue(m_isSegmentOn); 
     }
 
+	void pushHistory();
+	void popHistory(bool isRGB);
+
     bool toggleEqualization();
+    void equalizationSliderChange();
    
 public:
     SelectionObject *m_pRoi;
@@ -112,6 +137,8 @@ private:
     wxButton        *m_pBtnGraphCut;
     wxButton        *m_pBtnKmeans;
     wxTextCtrl      *m_pTxtThresBox;
+    wxSlider        *m_pLowerEqSlider;
+    wxSlider        *m_pUpperEqSlider;
 
     void activateLIC() {};
     void clean()       {};
@@ -124,18 +151,31 @@ private:
 
     void equalizeHistogram();
     
-    void generateTexture();
+	void generateTexture();
+	void updateTexture( SubTextureBox drawZone, const bool isRound, float color );
+	void updateTexture( SubTextureBox drawZone, const bool isRound, wxColor colorRGB );
+	void fillHistory(const SubTextureBox drawZone, bool isRGB);
+
     void generateGeometry() {};
     void initializeBuffer() {};
     void smooth()           {};
-    
+
+	stack< stack< SubTextureBox > >	m_drawHistory;
+
     float                   m_floodThreshold;
     float                   m_graphSigma;
     std::vector<float>      m_floatDataset;
     std::vector<float>      m_equalizedDataset; // Dataset having its histogram equalized
     int                     m_dataType;
     TensorField             *m_pTensorField;
+
     bool                    m_useEqualizedDataset;
+    unsigned int            m_lowerEqThreshold;
+    unsigned int            m_upperEqThreshold;
+    unsigned int            m_currentLowerEqThreshold;
+    unsigned int            m_currentUpperEqThreshold;
+    unsigned int            m_cdf[256];
+
     
     AnatomyType m_anatType;
     int m_nbClusters;

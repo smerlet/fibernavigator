@@ -4,8 +4,10 @@
 #include "SelectionBox.h"
 #include "SelectionEllipsoid.h"
 #include "SelectionTree.h"
+#include "TrackingWindow.h"
 #include "../dataset/Anatomy.h"
 #include "../dataset/Fibers.h"
+#include "../dataset/FibersGroup.h"
 #include "../dataset/ODFs.h"
 #include "../dataset/SplinePoint.h"
 #include "../dataset/Surface.h"
@@ -13,6 +15,7 @@
 #include "../gui/SelectionObject.h"
 #include "../gui/SelectionVOI.h"
 #include "../misc/IsoSurface/CIsoSurface.h"
+#include "../Logger.h"
 
 IMPLEMENT_DYNAMIC_CLASS(PropertiesWindow, wxScrolledWindow)
 
@@ -21,17 +24,19 @@ EVT_PAINT(      PropertiesWindow::OnPaint)
 EVT_SIZE(       PropertiesWindow::OnSize)
 END_EVENT_TABLE()
 
-PropertiesWindow::PropertiesWindow( MainFrame *parent, wxWindowID id,
+PropertiesWindow::PropertiesWindow( wxWindow *parent, MainFrame *mf, wxWindowID id,
                     const wxPoint &pos, const wxSize &size )
         : wxScrolledWindow( parent, id, pos, size, wxBORDER_NONE, _T("test canvas") )
 {
-    m_mainFrame = parent;
+    m_noteBook = parent;
+    m_mainFrame = mf;
     SetBackgroundColour( *wxLIGHT_GREY );
     SetCursor( wxCursor( wxCURSOR_HAND ) );
     propertiesSizer = new wxBoxSizer( wxVERTICAL );
     SetSizer( propertiesSizer );
     SetAutoLayout(true);
 }
+
 
 void PropertiesWindow::OnSize( wxSizeEvent &WXUNUSED(event) )
 {
@@ -45,6 +50,39 @@ void PropertiesWindow::OnPaint( wxPaintEvent &WXUNUSED(event) )
 
 void PropertiesWindow::OnListItemUp(wxCommandEvent& WXUNUSED(event))
 {
+	DatasetInfo* pDatasetInfo = ((DatasetInfo*)m_mainFrame->m_pListCtrl->GetItemData(m_mainFrame->m_currentListItem));
+	if(pDatasetInfo != NULL)
+	{
+		if( pDatasetInfo->getType() == FIBERSGROUP )
+		{
+			FibersGroup* pFibersGroup = (FibersGroup*)pDatasetInfo;
+			pFibersGroup->OnMoveUp();
+			m_mainFrame->refreshAllGLWidgets();
+			return;
+		}
+	}
+	
+	long prevItemId = m_mainFrame->m_currentListItem - 1;
+	if(prevItemId > -1)
+	{
+		DatasetInfo* pPrevDatasetInfo = ((DatasetInfo*)m_mainFrame->m_pListCtrl->GetItemData(prevItemId));
+		if( pPrevDatasetInfo != NULL)
+		{
+			if( pPrevDatasetInfo->getType() == FIBERS && pDatasetInfo->getType() != FIBERS )
+			{
+				FibersGroup* pFibersGroup;
+				m_mainFrame->m_pDatasetHelper->getFibersGroupDataset(pFibersGroup);
+				if(pFibersGroup != NULL)
+				{
+					int nbChilds = pFibersGroup->getFibersCount();
+					m_mainFrame->m_pListCtrl->moveItemAt(m_mainFrame->m_currentListItem, prevItemId - nbChilds);
+					m_mainFrame->m_pListCtrl->EnsureVisible(prevItemId - nbChilds);
+					m_mainFrame->refreshAllGLWidgets();
+					return;
+				}
+			}
+		}
+	}
     m_mainFrame->m_pListCtrl->moveItemUp(m_mainFrame->m_currentListItem);
     m_mainFrame->m_pListCtrl->EnsureVisible(m_mainFrame->m_currentListItem);   
     m_mainFrame->refreshAllGLWidgets();
@@ -52,7 +90,40 @@ void PropertiesWindow::OnListItemUp(wxCommandEvent& WXUNUSED(event))
 
 void PropertiesWindow::OnListItemDown( wxCommandEvent& WXUNUSED(event) )
 {
-    m_mainFrame->m_pListCtrl->moveItemDown(m_mainFrame->m_currentListItem);
+	DatasetInfo* pDatasetInfo = ((DatasetInfo*)m_mainFrame->m_pListCtrl->GetItemData(m_mainFrame->m_currentListItem));
+	if(pDatasetInfo != NULL)
+	{
+		if( pDatasetInfo->getType() == FIBERSGROUP )
+		{
+			DatasetInfo* pDataset = (DatasetInfo*)m_mainFrame->m_pListCtrl->GetItemData(m_mainFrame->m_pListCtrl->GetItemCount() - 1);
+			if(pDataset->getType() != FIBERS ) // if the last item in the list is not a fiber (child), then move down
+			{
+				FibersGroup* pFibersGroup = (FibersGroup*)pDatasetInfo;
+				pFibersGroup->OnMoveDown();
+				m_mainFrame->refreshAllGLWidgets();
+			}
+			return;
+		}
+	}
+	
+	long nextItemId = m_mainFrame->m_currentListItem + 1;
+	if(nextItemId > -1)
+	{
+		DatasetInfo* pNextDatasetInfo = ((DatasetInfo*)m_mainFrame->m_pListCtrl->GetItemData(nextItemId));
+		if( pNextDatasetInfo != NULL)
+		{
+			if( pNextDatasetInfo->getType() == FIBERSGROUP )
+			{
+				FibersGroup* pFibersGroup = (FibersGroup*)pNextDatasetInfo;
+				int nbChilds = pFibersGroup->getFibersCount();
+				m_mainFrame->m_pListCtrl->moveItemAt(m_mainFrame->m_currentListItem, nextItemId + nbChilds);
+				m_mainFrame->m_pListCtrl->EnsureVisible(nextItemId + nbChilds);
+				m_mainFrame->refreshAllGLWidgets();
+				return;
+			}
+		}
+	}
+	m_mainFrame->m_pListCtrl->moveItemDown(m_mainFrame->m_currentListItem);
     m_mainFrame->m_pListCtrl->EnsureVisible(m_mainFrame->m_currentListItem);
     m_mainFrame->refreshAllGLWidgets();
 }
@@ -62,8 +133,251 @@ void PropertiesWindow::OnDeleteListItem( wxEvent& WXUNUSED(event) )
     m_mainFrame->deleteListItem();
 }
 
+void PropertiesWindow::OnToggleIntensityBtn( wxEvent& WXUNUSED(event) )
+{
+	if (m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1)
+    {
+		DatasetInfo* pDatasetInfo = ((DatasetInfo*)m_mainFrame->m_pCurrentSceneObject);
+        if( pDatasetInfo != NULL)
+		{
+			DatasetHelper* pDatasetHelper = m_mainFrame->m_pDatasetHelper;
+			if(pDatasetHelper)
+			{
+				FibersGroup* pFibersGroup;
+				pDatasetHelper->getFibersGroupDataset(pFibersGroup);
+				if(pFibersGroup)
+				{
+					pFibersGroup->OnToggleIntensityBtn();
+				}
+			}
+		}
+	}
+	m_mainFrame->refreshAllGLWidgets();
+}
+
+void PropertiesWindow::OnToggleOpacityBtn( wxEvent& WXUNUSED(event) )
+{
+	if (m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1)
+    {
+		DatasetInfo* pDatasetInfo = ((DatasetInfo*)m_mainFrame->m_pCurrentSceneObject);
+        if( pDatasetInfo != NULL)
+		{
+			DatasetHelper* pDatasetHelper = m_mainFrame->m_pDatasetHelper;
+			if(pDatasetHelper)
+			{
+				FibersGroup* pFibersGroup;
+				pDatasetHelper->getFibersGroupDataset(pFibersGroup);
+				if(pFibersGroup)
+				{
+					pFibersGroup->OnToggleOpacityBtn();
+				}
+			}
+		}
+	}
+	m_mainFrame->refreshAllGLWidgets();
+}
+
+void PropertiesWindow::OnToggleMinMaxLengthBtn( wxEvent& WXUNUSED(event) )
+{
+	if (m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1)
+    {
+		DatasetInfo* pDatasetInfo = ((DatasetInfo*)m_mainFrame->m_pCurrentSceneObject);
+        if( pDatasetInfo != NULL)
+		{
+			DatasetHelper* pDatasetHelper = m_mainFrame->m_pDatasetHelper;
+			if(pDatasetHelper)
+			{
+				FibersGroup* pFibersGroup;
+				pDatasetHelper->getFibersGroupDataset(pFibersGroup);
+				if(pFibersGroup)
+				{
+					pFibersGroup->OnToggleMinMaxLengthBtn();
+				}
+			}
+		}
+	}
+	m_mainFrame->refreshAllGLWidgets();
+}
+
+void PropertiesWindow::OnToggleSubsamplingBtn( wxEvent& WXUNUSED(event) )
+{
+	if (m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1)
+    {
+		DatasetInfo* pDatasetInfo = ((DatasetInfo*)m_mainFrame->m_pCurrentSceneObject);
+        if( pDatasetInfo != NULL)
+		{
+			DatasetHelper* pDatasetHelper = m_mainFrame->m_pDatasetHelper;
+			if(pDatasetHelper)
+			{
+				FibersGroup* pFibersGroup;
+				pDatasetHelper->getFibersGroupDataset(pFibersGroup);
+				if(pFibersGroup)
+				{
+					pFibersGroup->OnToggleSubsamplingBtn();
+				}
+			}
+		}
+	}
+	m_mainFrame->refreshAllGLWidgets();
+}
+
+void PropertiesWindow::OnToggleCrossingFibersBtn( wxEvent& WXUNUSED(event) )
+{
+	if (m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1)
+    {
+		DatasetInfo* pDatasetInfo = ((DatasetInfo*)m_mainFrame->m_pCurrentSceneObject);
+        if( pDatasetInfo != NULL)
+		{
+			DatasetHelper* pDatasetHelper = m_mainFrame->m_pDatasetHelper;
+			if(pDatasetHelper)
+			{
+				FibersGroup* pFibersGroup;
+				pDatasetHelper->getFibersGroupDataset(pFibersGroup);
+				if(pFibersGroup)
+				{
+					pFibersGroup->OnToggleCrossingFibersBtn();
+				}
+			}
+		}
+	}
+}
+
+void PropertiesWindow::OnToggleColorModeBtn( wxEvent& WXUNUSED(event) )
+{
+	if (m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1)
+    {
+		DatasetInfo* pDatasetInfo = ((DatasetInfo*)m_mainFrame->m_pCurrentSceneObject);
+        if( pDatasetInfo != NULL)
+		{
+			DatasetHelper* pDatasetHelper = m_mainFrame->m_pDatasetHelper;
+			if(pDatasetHelper)
+			{
+				FibersGroup* pFibersGroup;
+				pDatasetHelper->getFibersGroupDataset(pFibersGroup);
+				if(pFibersGroup)
+				{
+					pFibersGroup->OnToggleColorModeBtn();
+				}
+			}
+		}
+	}
+	m_mainFrame->refreshAllGLWidgets();
+}
+
+void PropertiesWindow::OnToggleLocalColoringBtn( wxEvent& WXUNUSED(event) )
+{
+	if (m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1)
+    {
+		DatasetInfo* pDatasetInfo = ((DatasetInfo*)m_mainFrame->m_pCurrentSceneObject);
+        if( pDatasetInfo != NULL)
+		{
+			DatasetHelper* pDatasetHelper = m_mainFrame->m_pDatasetHelper;
+			if(pDatasetHelper)
+			{
+				FibersGroup* pFibersGroup;
+				pDatasetHelper->getFibersGroupDataset(pFibersGroup);
+				if(pFibersGroup)
+				{
+					pFibersGroup->OnToggleLocalColoring();
+				}
+			}
+		}
+	}
+	m_mainFrame->refreshAllGLWidgets();
+}
+
+void PropertiesWindow::OnToggleNormalColoringBtn( wxEvent& WXUNUSED(event) )
+{
+	if (m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1)
+    {
+		DatasetInfo* pDatasetInfo = ((DatasetInfo*)m_mainFrame->m_pCurrentSceneObject);
+        if( pDatasetInfo != NULL)
+		{
+			DatasetHelper* pDatasetHelper = m_mainFrame->m_pDatasetHelper;
+			if(pDatasetHelper)
+			{
+				FibersGroup* pFibersGroup;
+				pDatasetHelper->getFibersGroupDataset(pFibersGroup);
+				if(pFibersGroup)
+				{
+					pFibersGroup->OnToggleNormalColoring();
+				}
+			}
+		}
+	}
+	m_mainFrame->refreshAllGLWidgets();
+}
+
+void PropertiesWindow::OnClickApplyBtn( wxEvent& WXUNUSED(event) )
+{
+	if (m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1)
+    {
+		DatasetInfo* pDatasetInfo = ((DatasetInfo*)m_mainFrame->m_pCurrentSceneObject);
+        if( pDatasetInfo != NULL)
+		{
+			DatasetHelper* pDatasetHelper = m_mainFrame->m_pDatasetHelper;
+			if(pDatasetHelper)
+			{
+				FibersGroup* pFibersGroup;
+				pDatasetHelper->getFibersGroupDataset(pFibersGroup);
+				if(pFibersGroup)
+				{
+					pFibersGroup->OnClickApplyBtn();
+				}
+			}
+		}
+	}
+	m_mainFrame->refreshAllGLWidgets();
+}
+
+void PropertiesWindow::OnClickCancelBtn( wxEvent& WXUNUSED(event) )
+{
+	if (m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1)
+    {
+		DatasetInfo* pDatasetInfo = ((DatasetInfo*)m_mainFrame->m_pCurrentSceneObject);
+        if( pDatasetInfo != NULL)
+		{
+			DatasetHelper* pDatasetHelper = m_mainFrame->m_pDatasetHelper;
+			if(pDatasetHelper)
+			{
+				FibersGroup* pFibersGroup;
+				pDatasetHelper->getFibersGroupDataset(pFibersGroup);
+				if(pFibersGroup)
+				{
+					pFibersGroup->OnClickCancelBtn();
+				}
+			}
+		}
+	}
+	m_mainFrame->refreshAllGLWidgets();
+}
+
+void PropertiesWindow::OnClickGenerateFiberVolumeBtn( wxEvent& WXUNUSED(event) )
+{
+	if (m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1)
+    {
+		DatasetInfo* pDatasetInfo = ((DatasetInfo*)m_mainFrame->m_pCurrentSceneObject);
+        if( pDatasetInfo != NULL)
+		{
+			DatasetHelper* pDatasetHelper = m_mainFrame->m_pDatasetHelper;
+			if(pDatasetHelper)
+			{
+				FibersGroup* pFibersGroup;
+				pDatasetHelper->getFibersGroupDataset(pFibersGroup);
+				if(pFibersGroup)
+				{
+					pFibersGroup->OnClickGenerateFiberVolumeBtn();
+				}
+			}
+		}
+	}
+	m_mainFrame->refreshAllGLWidgets();
+}
+
 void PropertiesWindow::OnToggleShowFS( wxEvent& WXUNUSED(event) )
 {
+    Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnToggleShowFS" ), LOGLEVEL_DEBUG );
+
     if (m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1)
     {
         if( ! ((DatasetInfo*)m_mainFrame->m_pCurrentSceneObject)->toggleShowFS())
@@ -76,6 +390,8 @@ void PropertiesWindow::OnToggleShowFS( wxEvent& WXUNUSED(event) )
 
 void PropertiesWindow::OnListItemShow( wxCommandEvent&  WXUNUSED(event) )
 {
+    Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnListItemShow" ), LOGLEVEL_DEBUG );
+
     if( m_mainFrame->m_pCurrentSceneObject == NULL && m_mainFrame->m_currentListItem != -1)
         return;
 
@@ -84,6 +400,15 @@ void PropertiesWindow::OnListItemShow( wxCommandEvent&  WXUNUSED(event) )
         m_mainFrame->m_pListCtrl->SetItem( m_mainFrame->m_currentListItem, 0, wxT( "" ), 0 );
     else
         m_mainFrame->m_pListCtrl->SetItem( m_mainFrame->m_currentListItem, 0, wxT( "" ), 1 );
+	
+	if(l_info->getType() == FIBERSGROUP)
+	{
+		FibersGroup* pFibersGroup = (FibersGroup*)l_info;
+		if(pFibersGroup != NULL)
+		{
+			pFibersGroup->OnToggleVisibleBtn();
+		}
+	}
 
     m_mainFrame->refreshAllGLWidgets();
 }
@@ -137,13 +462,28 @@ void PropertiesWindow::OnSliderOpacityThresholdMoved( wxCommandEvent& WXUNUSED(e
 
 void PropertiesWindow::OnEqualizeDataset( wxEvent& WXUNUSED(event) )
 {
-	if( m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1 )
+    Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnEqualizeDataset" ), LOGLEVEL_DEBUG );
+
+    if( m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1 )
 	{
         if( ((DatasetInfo*)m_mainFrame->m_pCurrentSceneObject)->getType() < MESH )
         {
             ((Anatomy*)m_mainFrame->m_pCurrentSceneObject)->toggleEqualization();
         }
 	}
+}
+
+void PropertiesWindow::OnEqualizationSliderChange( wxCommandEvent& WXUNUSED(event) )
+{
+    Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnEqualizationSliderChange" ), LOGLEVEL_DEBUG );
+
+    if( m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1 )
+    {
+        if( ((DatasetInfo*)m_mainFrame->m_pCurrentSceneObject)->getType() < MESH )
+        {
+            ((Anatomy*)m_mainFrame->m_pCurrentSceneObject)->equalizationSliderChange();
+        }
+    }
 }
 
 void PropertiesWindow::OnRename( wxCommandEvent& WXUNUSED(event) )
@@ -191,7 +531,6 @@ void PropertiesWindow::OnFlipZ( wxCommandEvent& WXUNUSED(event) )
     DatasetInfo* pInfo = (DatasetInfo*)m_mainFrame->m_pListCtrl->GetItemData( m_mainFrame->m_currentListItem );
     pInfo->flipAxis(Z_AXIS);
 }
-
 
 void PropertiesWindow::OnDilateDataset( wxCommandEvent& WXUNUSED(event) )
 {
@@ -406,6 +745,8 @@ void PropertiesWindow::OnKmeans( wxCommandEvent& WXUNUSED(event) )
 
 void PropertiesWindow::OnSelectObj(wxCommandEvent& WXUNUSED(event))
 {
+    Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnSelectObj" ), LOGLEVEL_DEBUG );
+
     m_mainFrame->m_pDatasetHelper->m_SegmentMethod = 1;
     m_mainFrame->m_pDatasetHelper->m_isSelectBckActive = false;
     m_mainFrame->m_pDatasetHelper->m_isFloodfillActive = false;
@@ -414,6 +755,8 @@ void PropertiesWindow::OnSelectObj(wxCommandEvent& WXUNUSED(event))
 
 void PropertiesWindow::OnSelectBck(wxCommandEvent& WXUNUSED(event))
 {
+    Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnSelectBck" ), LOGLEVEL_DEBUG );
+
     m_mainFrame->m_pDatasetHelper->m_SegmentMethod = 1;
     m_mainFrame->m_pDatasetHelper->m_isFloodfillActive = false;
     m_mainFrame->m_pDatasetHelper->m_isSelectBckActive = true;
@@ -451,6 +794,8 @@ void PropertiesWindow::OnLoop( wxCommandEvent& WXUNUSED(event) )
 
 void PropertiesWindow::OnToggleLIC( wxCommandEvent& WXUNUSED(event) )
 {
+    Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnToggleLIC" ), LOGLEVEL_DEBUG );
+
     if( m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1 && m_mainFrame->m_pDatasetHelper->m_vectorsLoaded )
     {
         ((DatasetInfo*) m_mainFrame->m_pCurrentSceneObject)->activateLIC();
@@ -460,7 +805,9 @@ void PropertiesWindow::OnToggleLIC( wxCommandEvent& WXUNUSED(event) )
 
 void PropertiesWindow::OnToggleDrawPointsMode( wxCommandEvent& event )
 {
-   m_mainFrame->onToggleDrawPointsMode(event);
+    Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnToggleDrawPointsMode" ), LOGLEVEL_DEBUG );
+
+    m_mainFrame->onToggleDrawPointsMode(event);
 }
 
 void PropertiesWindow::OnMoveBoundaryPointsLeft( wxCommandEvent& event )
@@ -476,7 +823,7 @@ void PropertiesWindow::OnMoveBoundaryPointsRight(wxCommandEvent& event)
 void PropertiesWindow::OnFibersFilter( wxCommandEvent& event)
 {
     Fibers* pTmpFib = NULL;
-    m_mainFrame->m_pDatasetHelper->getFiberDataset(pTmpFib);    
+    m_mainFrame->m_pDatasetHelper->getSelectedFiberDataset(pTmpFib);    
     if(pTmpFib != NULL)
     {
         pTmpFib->updateFibersFilters();
@@ -486,7 +833,7 @@ void PropertiesWindow::OnFibersFilter( wxCommandEvent& event)
 void PropertiesWindow::OnGenerateFiberVolume( wxCommandEvent& WXUNUSED(event) )
 {
     Fibers* pTmpFib = NULL;
-    m_mainFrame->m_pDatasetHelper->getFiberDataset(pTmpFib);
+    m_mainFrame->m_pDatasetHelper->getSelectedFiberDataset(pTmpFib);
     if(pTmpFib != NULL)
     {
         pTmpFib->generateFiberVolume();
@@ -495,6 +842,8 @@ void PropertiesWindow::OnGenerateFiberVolume( wxCommandEvent& WXUNUSED(event) )
 
 void PropertiesWindow::OnListMenuThreshold( wxCommandEvent&  WXUNUSED(event) )
 {
+    Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnListMenuThreshold" ), LOGLEVEL_DEBUG );
+
     if( m_mainFrame->m_pCurrentSceneObject == NULL && m_mainFrame->m_currentListItem != -1)
         return;
     DatasetInfo* l_info = (DatasetInfo*)m_mainFrame->m_pCurrentSceneObject;
@@ -513,11 +862,19 @@ void PropertiesWindow::OnListMenuThreshold( wxCommandEvent&  WXUNUSED(event) )
 //////////////////////////////////////////////////////////////////////////
 void PropertiesWindow::OnListMenuDistance( wxCommandEvent& WXUNUSED(event))
 {
-    if(m_mainFrame->m_pDatasetHelper->m_fiberColorationMode != DISTANCE_COLOR)
-    {
-        m_mainFrame->m_pDatasetHelper->m_fiberColorationMode = DISTANCE_COLOR;
-        ColorFibers();
-    }
+	Fibers* pFibers = NULL;
+    m_mainFrame->m_pDatasetHelper->getSelectedFiberDataset(pFibers);
+    if(pFibers != NULL)
+	{
+		Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnListMenuDistance" ), LOGLEVEL_DEBUG );
+
+		if(pFibers->getColorationMode() != DISTANCE_COLOR)
+		{
+			pFibers->setColorationMode( DISTANCE_COLOR );
+			pFibers->updateFibersColors();  
+			pFibers->updateColorationMode();
+		}
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -526,10 +883,19 @@ void PropertiesWindow::OnListMenuDistance( wxCommandEvent& WXUNUSED(event))
 //////////////////////////////////////////////////////////////////////////
 void PropertiesWindow::OnListMenuMinDistance( wxCommandEvent& WXUNUSED(event))
 {
-    if(m_mainFrame->m_pDatasetHelper->m_fiberColorationMode != MINDISTANCE_COLOR)
-    {
-        m_mainFrame->m_pDatasetHelper->m_fiberColorationMode = MINDISTANCE_COLOR;
-        ColorFibers();
+    Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnListMenuMinDistance" ), LOGLEVEL_DEBUG );
+
+	Fibers* pFibers = NULL;
+    m_mainFrame->m_pDatasetHelper->getSelectedFiberDataset(pFibers);
+    if(pFibers != NULL)
+	{
+
+		if(pFibers->getColorationMode() != MINDISTANCE_COLOR)
+		{
+			pFibers->setColorationMode( MINDISTANCE_COLOR );
+			pFibers->updateFibersColors();
+			pFibers->updateColorationMode();
+		}
     }
 }
 
@@ -540,10 +906,16 @@ void PropertiesWindow::OnListMenuMinDistance( wxCommandEvent& WXUNUSED(event))
 ///////////////////////////////////////////////////////////////////////////
 void PropertiesWindow::OnColorWithCurvature( wxCommandEvent& WXUNUSED(event) )
 {
-    if(m_mainFrame->m_pDatasetHelper->m_fiberColorationMode != CURVATURE_COLOR)
+	Fibers* pFibers = NULL;
+    m_mainFrame->m_pDatasetHelper->getSelectedFiberDataset(pFibers);
+    if(pFibers != NULL)
     {
-        m_mainFrame->m_pDatasetHelper->m_fiberColorationMode = CURVATURE_COLOR;
-        ColorFibers();
+		if(pFibers->getColorationMode() != CURVATURE_COLOR)
+		{
+			pFibers->setColorationMode( CURVATURE_COLOR );
+			pFibers->updateFibersColors();
+			pFibers->updateColorationMode();
+		}
     }
 }
 
@@ -553,20 +925,59 @@ void PropertiesWindow::OnColorWithCurvature( wxCommandEvent& WXUNUSED(event) )
 ///////////////////////////////////////////////////////////////////////////
 void PropertiesWindow::OnColorWithTorsion( wxCommandEvent& WXUNUSED(event) )
 {
-    if(m_mainFrame->m_pDatasetHelper->m_fiberColorationMode != TORSION_COLOR)
+	Fibers* pFibers = NULL;
+    m_mainFrame->m_pDatasetHelper->getSelectedFiberDataset(pFibers);
+    if(pFibers != NULL)
     {
-        m_mainFrame->m_pDatasetHelper->m_fiberColorationMode = TORSION_COLOR;
-        ColorFibers();
+		if(pFibers->getColorationMode() != TORSION_COLOR)
+		{
+			pFibers->setColorationMode( TORSION_COLOR );
+			pFibers->updateFibersColors();
+			pFibers->updateColorationMode();
+		}
     }
 }
 
 void PropertiesWindow::OnNormalColoring( wxCommandEvent& WXUNUSED(event) )
 {
-    if(m_mainFrame->m_pDatasetHelper->m_fiberColorationMode != NORMAL_COLOR)
+	Fibers* pFibers = NULL;
+    m_mainFrame->m_pDatasetHelper->getSelectedFiberDataset(pFibers);
+    if(pFibers != NULL)
     {
-        m_mainFrame->m_pDatasetHelper->m_fiberColorationMode = NORMAL_COLOR;
-        ColorFibers();
+		if(pFibers->getColorationMode() != NORMAL_COLOR)
+		{
+			pFibers->setColorationMode( NORMAL_COLOR );
+			pFibers->updateFibersColors();
+			pFibers->updateColorationMode();
+		}
     }
+}
+
+///////////////////////////////////////////////////////////////////////////
+// This function will be triggered when the user click on the normal coloring radio
+// button located in the mean fiber coloring option
+///////////////////////////////////////////////////////////////////////////
+void PropertiesWindow::OnNormalMeanFiberColoring( wxCommandEvent& event )
+{
+   ( (SelectionObject*) m_mainFrame->m_pCurrentSceneObject )->setMeanFiberColorMode(NORMAL_COLOR); 
+}
+
+///////////////////////////////////////////////////////////////////////////
+// This function will be triggered when the user click on the custom coloring radio
+// button located in the mean fiber coloring option
+///////////////////////////////////////////////////////////////////////////
+void PropertiesWindow::OnCustomMeanFiberColoring( wxCommandEvent& event )
+{
+    ( (SelectionObject*) m_mainFrame->m_pCurrentSceneObject )->setMeanFiberColorMode(CUSTOM_COLOR);
+}
+
+///////////////////////////////////////////////////////////////////////////
+// This function will be triggered when the user move the slider
+// button located in the mean fiber coloring option
+///////////////////////////////////////////////////////////////////////////
+void PropertiesWindow::OnMeanFiberOpacityChange( wxCommandEvent& event )
+{
+    ( (SelectionObject*) m_mainFrame->m_pCurrentSceneObject )->updateMeanFiberOpacity();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -765,7 +1176,7 @@ void PropertiesWindow::OnGlyphScalingFactorSliderMoved( wxCommandEvent& WXUNUSED
 {
     if( m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1 )
     {
-        ((Glyph*)m_mainFrame->m_pCurrentSceneObject)->setScalingFactor( ((Glyph*)m_mainFrame->m_pCurrentSceneObject)->m_psliderScalingFactor->GetValue());
+        ((Glyph*)m_mainFrame->m_pCurrentSceneObject)->setScalingFactor( ((Glyph*)m_mainFrame->m_pCurrentSceneObject)->m_psliderScalingFactor->GetValue()/10.0f);
     }
 }
 
@@ -890,6 +1301,8 @@ void PropertiesWindow::OnNormalizeTensors( wxCommandEvent& event )
 ///////////////////////////////////////////////////////////////////////////
 void PropertiesWindow::OnDisplayFibersInfo( wxCommandEvent& WXUNUSED(event) )
 {
+    Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnDisplayFibersInfo" ), LOGLEVEL_DEBUG );
+
 // TODO remove when the bug with the wxChoice in Windows is fixed.
 #ifndef __WXMSW__
     ((SelectionObject*)m_mainFrame->m_pCurrentSceneObject)->UpdateMeanValueTypeBox();
@@ -904,7 +1317,120 @@ void PropertiesWindow::OnDisplayFibersInfo( wxCommandEvent& WXUNUSED(event) )
 ///////////////////////////////////////////////////////////////////////////
 void PropertiesWindow::OnDisplayMeanFiber( wxCommandEvent& WXUNUSED(event) )
 {
+    Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnDisplayMeanFiber" ), LOGLEVEL_DEBUG );
+
     ( (SelectionObject*)m_mainFrame->m_pCurrentSceneObject )->computeMeanFiber();
+    m_mainFrame->refreshAllGLWidgets();
+}
+
+///////////////////////////////////////////////////////////////////////////
+// This function will be triggered when the user click on the display convex hull
+// button that is located in the m_fibersInfoSizer.
+///////////////////////////////////////////////////////////////////////////
+void PropertiesWindow::OnDisplayConvexHull( wxCommandEvent& WXUNUSED(event) )
+{
+    ( (SelectionObject*)m_mainFrame->m_pCurrentSceneObject )->computeConvexHull();
+    m_mainFrame->refreshAllGLWidgets();
+}
+
+///////////////////////////////////////////////////////////////////////////
+// This function will be triggered when the user click on the color button
+// beside the display convex hull button that is located in the m_fibersInfoSizer.
+///////////////////////////////////////////////////////////////////////////
+void PropertiesWindow::OnConvexHullColorChange( wxCommandEvent& WXUNUSED(event) )
+{
+    if( ! m_mainFrame->m_pDatasetHelper->m_theScene )
+        return;
+
+    wxColourData l_colorData;
+
+    for( int i = 0; i < 10; ++i )
+    {
+        wxColour l_color(i * 28, i * 28, i * 28);
+        l_colorData.SetCustomColour(i, l_color);
+    }
+
+    int i = 10;
+    wxColour l_color ( 255, 0, 0 );
+    l_colorData.SetCustomColour( i++, l_color );
+    wxColour l_color1( 0, 255, 0 );
+    l_colorData.SetCustomColour( i++, l_color1 );
+    wxColour l_color2( 0, 0, 255 );
+    l_colorData.SetCustomColour( i++, l_color2 );
+    wxColour l_color3( 255, 255, 0 );
+    l_colorData.SetCustomColour( i++, l_color3 );
+    wxColour l_color4( 255, 0, 255 );
+    l_colorData.SetCustomColour( i++, l_color4 );
+    wxColour l_color5( 0, 255, 255 );
+    l_colorData.SetCustomColour( i++, l_color5 );
+
+    wxColourDialog dialog( this, &l_colorData );
+    wxColour l_col;
+    if( dialog.ShowModal() == wxID_OK )
+    {
+        wxColourData l_retData = dialog.GetColourData();
+        l_col = l_retData.GetColour();
+    }
+    else
+    {
+        return;
+    }
+
+    ((SelectionObject*)m_mainFrame->m_pCurrentSceneObject)->setConvexHullColor( l_col );
+  
+    m_mainFrame->refreshAllGLWidgets();
+}
+
+void PropertiesWindow::OnConvexHullOpacityChange( wxCommandEvent& WXUNUSED(event) )
+{
+    ( (SelectionObject*) m_mainFrame->m_pCurrentSceneObject )->updateConvexHullOpacity();
+}
+
+///////////////////////////////////////////////////////////////////////////
+// This function will be triggered when the user click on the color palette
+// button that is located aside of the Show mean fiber button
+///////////////////////////////////////////////////////////////////////////
+void PropertiesWindow::OnMeanFiberColorChange( wxCommandEvent& WXUNUSED(event) )
+{
+    if( ! m_mainFrame->m_pDatasetHelper->m_theScene )
+        return;
+
+    wxColourData l_colorData;
+
+    for( int i = 0; i < 10; ++i )
+    {
+        wxColour l_color(i * 28, i * 28, i * 28);
+        l_colorData.SetCustomColour(i, l_color);
+    }
+
+    int i = 10;
+    wxColour l_color ( 255, 0, 0 );
+    l_colorData.SetCustomColour( i++, l_color );
+    wxColour l_color1( 0, 255, 0 );
+    l_colorData.SetCustomColour( i++, l_color1 );
+    wxColour l_color2( 0, 0, 255 );
+    l_colorData.SetCustomColour( i++, l_color2 );
+    wxColour l_color3( 255, 255, 0 );
+    l_colorData.SetCustomColour( i++, l_color3 );
+    wxColour l_color4( 255, 0, 255 );
+    l_colorData.SetCustomColour( i++, l_color4 );
+    wxColour l_color5( 0, 255, 255 );
+    l_colorData.SetCustomColour( i++, l_color5 );
+
+    wxColourDialog dialog( this, &l_colorData );
+    wxColour l_col;
+    if( dialog.ShowModal() == wxID_OK )
+    {
+        wxColourData l_retData = dialog.GetColourData();
+        l_col = l_retData.GetColour();
+    }
+    else
+    {
+        return;
+    }
+
+    ((SelectionObject*)m_mainFrame->m_pCurrentSceneObject)->setMeanFiberColor( l_col);
+    
     m_mainFrame->refreshAllGLWidgets();
 }
 
@@ -914,6 +1440,8 @@ void PropertiesWindow::OnDisplayMeanFiber( wxCommandEvent& WXUNUSED(event) )
 ///////////////////////////////////////////////////////////////////////////
 void PropertiesWindow::OnDisplayCrossSections( wxCommandEvent& WXUNUSED(event) )
 {
+    Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnDisplayCrossSections" ), LOGLEVEL_DEBUG );
+
     ((SelectionObject*)m_mainFrame->m_pCurrentSceneObject)->m_displayCrossSections = (CrossSectionsDisplay)( ( (int)((SelectionObject*)m_mainFrame->m_pCurrentSceneObject)->m_displayCrossSections ) + 1 );
     if( ((SelectionObject*)m_mainFrame->m_pCurrentSceneObject)->m_displayCrossSections == CS_NB_OF_CHOICES )
 	{
@@ -927,6 +1455,8 @@ void PropertiesWindow::OnDisplayCrossSections( wxCommandEvent& WXUNUSED(event) )
 ///////////////////////////////////////////////////////////////////////////
 void PropertiesWindow::OnDisplayDispersionTube( wxCommandEvent& WXUNUSED(event) )
 {
+    Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnDisplayDispersionTube" ), LOGLEVEL_DEBUG );
+
     ((SelectionObject*)m_mainFrame->m_pCurrentSceneObject)->m_displayDispersionCone = (DispersionConeDisplay)( ( (int)((SelectionObject*)m_mainFrame->m_pCurrentSceneObject)->m_displayDispersionCone ) + 1 );
     if( ((SelectionObject*)m_mainFrame->m_pCurrentSceneObject)->m_displayDispersionCone == DC_NB_OF_CHOICES )
 	{
@@ -965,6 +1495,8 @@ void PropertiesWindow::OnRenameBox( wxCommandEvent& WXUNUSED(event) )
 
 void PropertiesWindow::OnToggleAndNot( wxCommandEvent& WXUNUSED(event) )
 {
+    Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnToggleAndNot" ), LOGLEVEL_DEBUG );
+
     if( !m_mainFrame->m_pDatasetHelper->m_theScene)
         return;
 
@@ -1067,15 +1599,25 @@ void PropertiesWindow::OnVoiFlipNormals( wxCommandEvent& WXUNUSED(event) )
 void PropertiesWindow::OnDeleteTreeItem( wxTreeEvent&    event )
 {
     m_mainFrame->onDeleteTreeItem(event);
+    m_mainFrame->m_pMainGL->m_pRealTimeFibers->clearFibersRTT();
+    m_mainFrame->m_pMainGL->m_pRealTimeFibers->clearColorsRTT();
+    m_mainFrame->m_pDatasetHelper->m_isRTTDirty = false;
+    m_mainFrame->m_pDatasetHelper->m_isRTTReady = false;
+    m_mainFrame->m_pTrackingWindow->m_pBtnStart->Enable(false);
+
 }
 
 void PropertiesWindow::OnActivateTreeItem ( wxTreeEvent&    event )
 {
+    Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnActivateTreeItem" ), LOGLEVEL_DEBUG );
+
     m_mainFrame->onActivateTreeItem(event);
 }
 
 void PropertiesWindow::OnToggleShowSelectionObject( wxCommandEvent& WXUNUSED(event) )
 {
+    Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnToggleShowSelectionObject" ), LOGLEVEL_DEBUG );
+
     if( !m_mainFrame->m_pDatasetHelper->m_theScene)
         return;
 
@@ -1154,7 +1696,6 @@ void PropertiesWindow::OnAssignColor( wxCommandEvent& WXUNUSED(event) )
         return;
     }
 
-
     if( m_mainFrame->m_currentListItem != -1 )
     {
         DatasetInfo *l_info = (DatasetInfo*)m_mainFrame->m_pCurrentSceneObject;
@@ -1184,7 +1725,7 @@ void PropertiesWindow::OnCreateFibersDensityTexture( wxCommandEvent& WXUNUSED(ev
 {
     Fibers* l_fibers = NULL;
 
-    if( ! m_mainFrame->m_pDatasetHelper->getFiberDataset(l_fibers) )
+    if( ! m_mainFrame->m_pDatasetHelper->getSelectedFiberDataset(l_fibers) )
         return ;
 
     int l_x,l_y,l_z;
@@ -1243,7 +1784,7 @@ void PropertiesWindow::OnCreateFibersColorTexture( wxCommandEvent& WXUNUSED(even
 {
     Fibers* l_fibers = NULL;
 
-    if( !m_mainFrame->m_pDatasetHelper->getFiberDataset(l_fibers) )
+    if( !m_mainFrame->m_pDatasetHelper->getSelectedFiberDataset(l_fibers) )
         return ;
 
     int l_x,l_y,l_z;
@@ -1281,6 +1822,7 @@ void PropertiesWindow::OnCreateFibersColorTexture( wxCommandEvent& WXUNUSED(even
             }
         }
     }
+
     l_newAnatomy->setName( wxT( " (fiber_colors)" ) );
     m_mainFrame->m_pListCtrl->InsertItem( 0, wxT( "" ), 0 );
     m_mainFrame->m_pListCtrl->SetItem( 0, 1, l_newAnatomy->getName() );
@@ -1293,6 +1835,8 @@ void PropertiesWindow::OnCreateFibersColorTexture( wxCommandEvent& WXUNUSED(even
 
 void PropertiesWindow::OnMeanComboBoxSelectionChange( wxCommandEvent& event)
 {
+    Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnMeanComboBoxSelectionChange" ), LOGLEVEL_DEBUG );
+
     ((SelectionObject*)m_mainFrame->m_pCurrentSceneObject)->SetFiberInfoGridValues();
     m_mainFrame->refreshAllGLWidgets();
 }
@@ -1379,6 +1923,28 @@ void PropertiesWindow::OnRecalcMainDir( wxCommandEvent& WXUNUSED(event) )
             }*/
 }
 
+void PropertiesWindow::OnToggleCrossingFibers( wxEvent& WXUNUSED(event) )
+{
+    if( m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1 )
+    {
+        if( ((DatasetInfo*)m_mainFrame->m_pCurrentSceneObject)->getType() == FIBERS )
+        {
+            ((Fibers*)m_mainFrame->m_pCurrentSceneObject)->toggleCrossingFibers();
+        }
+    }
+}
+
+void PropertiesWindow::OnCrossingFibersThicknessChange( wxCommandEvent& WXUNUSED(event) )
+{
+    if( m_mainFrame->m_pCurrentSceneObject != NULL && m_mainFrame->m_currentListItem != -1 )
+    {
+        if( ((DatasetInfo*)m_mainFrame->m_pCurrentSceneObject)->getType() == FIBERS )
+        {
+            ((Fibers*)m_mainFrame->m_pCurrentSceneObject)->updateCrossingFibersThickness();
+        }
+    }
+}
+
 void PropertiesWindow::AddSelectionObjectToSelectionTree( SelectionObject *pSelObj,
                                                           const wxTreeItemId &parentTreeId )
 {
@@ -1441,3 +2007,4 @@ void PropertiesWindow::AddSelectionObjectsToSelectionTree( const vector< Selecti
     
     return;
 }
+

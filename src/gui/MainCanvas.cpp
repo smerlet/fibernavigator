@@ -1,14 +1,22 @@
 #include "MainCanvas.h"
-#include "MyListCtrl.h"
-#include "wx/utils.h"
-#include "../dataset/SplinePoint.h"
-#include "../misc/lic/FgeOffscreen.h"
+
 #include "MainFrame.h"
+#include "MyListCtrl.h"
+#include "../Logger.h"
 #include "../dataset/Anatomy.h"
+#include "../dataset/SplinePoint.h"
+#include "../dataset/Tensors.h"
+#include "../misc/lic/FgeOffscreen.h"
+
+
+
+
 #include "../gui/SelectionTree.h"
 #include "math.h"
 #include <list>
 #include <limits>
+
+#include <wx/utils.h>
 
 typedef std::vector<float> image1D;
 typedef std::vector<image1D> image2D;
@@ -63,15 +71,20 @@ const wxPoint& i_pos,const wxSize & i_size, long i_style, const wxString& i_name
     m_orthoModX = 0;
     m_orthoModY = 0;
     m_hitPts =Vector(0,0,0);
-    m_isRulerHit = false;
+	m_isRulerHit = false;
+	m_isDrawerHit = false;
     m_isSlizesLocked = false;
     m_isSceneLocked = false;
+    m_pRealTimeFibers = new RTTFibers(i_pDatasetHelper);
 }
 
 MainCanvas::~MainCanvas()
 {
 	if (m_pArcBall)
 		delete m_pArcBall;
+
+    if(m_pRealTimeFibers)
+        delete m_pRealTimeFibers;
 }
 
 void MainCanvas::init()
@@ -167,19 +180,19 @@ void MainCanvas::OnMouseEvent( wxMouseEvent& event )
                     m_pDatasetHelper->m_mainFrame->m_pZSlider->SetValue( newZ );
                     m_pDatasetHelper->m_mainFrame->refreshAllGLWidgets();
                 }
-                else if ( wxGetKeyState( WXK_CONTROL ) && m_pDatasetHelper->getPointMode() )
+                else if ( wxGetKeyState( WXK_CONTROL ) && m_pDatasetHelper->getPointMode())
                 {
-                    m_hr = pick( event.GetPosition(),false );
-                    if ( m_hr.hit && ( m_hr.picked <= SAGITTAL ) )
-                    {
-                        m_hr.picked = 20;
-                        SplinePoint *point = new SplinePoint( getEventCenter(), m_pDatasetHelper );
-                        wxTreeItemId pId = m_pDatasetHelper->m_mainFrame->m_pTreeWidget->AppendItem(
-                                m_pDatasetHelper->m_mainFrame->m_tPointId, wxT("point"), -1, -1, point );
-                        point->setTreeId( pId );
+					m_hr = pick( event.GetPosition(),false );
+					if ( m_hr.hit && ( m_hr.picked <= SAGITTAL ) )
+					{
+						m_hr.picked = 20;
+						SplinePoint *point = new SplinePoint( getEventCenter(), m_pDatasetHelper );
+						wxTreeItemId pId = m_pDatasetHelper->m_mainFrame->m_pTreeWidget->AppendItem(
+								m_pDatasetHelper->m_mainFrame->m_tPointId, wxT("point"), -1, -1, point );
+						point->setTreeId( pId );
 
-                        GetEventHandler()->ProcessEvent( event1 );
-                    }
+						GetEventHandler()->ProcessEvent( event1 );
+					}
                 }
 
             }
@@ -190,22 +203,69 @@ void MainCanvas::OnMouseEvent( wxMouseEvent& event )
                 m_mousePt.s.X = clickX;
                 m_mousePt.s.Y = clickY;
                 
-                if ( !m_pDatasetHelper->m_isDragging ) // Not Dragging
-                {
-                    m_pDatasetHelper->m_isDragging = true; // Prepare For Dragging
-                    m_lastRot = m_thisRot; // Set Last Static Rotation To Last Dynamic One
-                    m_pArcBall->click( &m_mousePt ); // Update Start Vector And Prepare For Dragging
-                }
-                else if(!m_isSceneLocked)
-                {                    
-                    Quat4fT ThisQuat;
-                    m_pArcBall->drag( &m_mousePt, &ThisQuat ); // Update End Vector And Get Rotation As Quaternion
-                    Matrix3fSetRotationFromQuat4f( &m_thisRot, &ThisQuat ); // Convert Quaternion Into Matrix3fT
-                    Matrix3fMulMatrix3f( &m_thisRot, &m_lastRot ); // Accumulate Last Rotation Into This One
-                    Matrix4fSetRotationFromMatrix3f( &m_pDatasetHelper->m_transform, &m_thisRot ); // Set Our Final Transform's Rotation From This One
+				// Use Control (or Command on Mac) key for advanced left click actions
+                if( event.CmdDown() )
+				{
+					if(!m_pDatasetHelper->m_isDragging)
+					{
+						if (m_pDatasetHelper->m_isDrawerToolActive)
+						{
+							pushAnatomyHistory();
+							m_hr = pick(event.GetPosition(), true);
+							drawOnAnatomy();
+						}
+						else if (m_pDatasetHelper->m_isRulerToolActive)
+						{
+							m_hr = pick(event.GetPosition(), true);
+						}
+						else
+						{
+							long l_item = m_pDatasetHelper->m_mainFrame->m_pListCtrl->GetNextItem( -1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED );
+							if(l_item != -1)
+							{
+								DatasetInfo* l_type = (DatasetInfo*)m_pDatasetHelper->m_mainFrame->m_pListCtrl->GetItemData( l_item );
+								Anatomy* l_info = (Anatomy*)m_pDatasetHelper->m_mainFrame->m_pListCtrl->GetItemData( l_item );
+
+								if (l_info->m_isSegmentOn && l_type->getType() < MESH ) //FloodFill Method (1click)
+								{
+									m_pDatasetHelper->m_isSegmentActive = true;
+									m_hr = pick(event.GetPosition(), false);
+									segment();
+									l_info->toggleSegment();                        
+								}
+							}
+						}
+						m_lastPos = event.GetPosition();
+						m_pDatasetHelper->m_isDragging = true; // Prepare For Dragging
+					}
+					else
+					{
+						if (m_pDatasetHelper->m_isDrawerToolActive)
+						{
+							m_hr = pick(event.GetPosition(), true);
+							drawOnAnatomy();
+						}
+					}
 				}
-                updateView();
-                Refresh( false );
+				else
+				{
+					if ( !m_pDatasetHelper->m_isDragging ) // Not Dragging
+					{
+						m_lastRot = m_thisRot; // Set Last Static Rotation To Last Dynamic One
+						m_pArcBall->click( &m_mousePt ); // Update Start Vector And Prepare For Dragging
+						m_pDatasetHelper->m_isDragging = true; // Prepare For Dragging
+					}
+					else if(!m_isSceneLocked)
+					{                    
+						Quat4fT ThisQuat;
+						m_pArcBall->drag( &m_mousePt, &ThisQuat ); // Update End Vector And Get Rotation As Quaternion
+						Matrix3fSetRotationFromQuat4f( &m_thisRot, &ThisQuat ); // Convert Quaternion Into Matrix3fT
+						Matrix3fMulMatrix3f( &m_thisRot, &m_lastRot ); // Accumulate Last Rotation Into This One
+						Matrix4fSetRotationFromMatrix3f( &m_pDatasetHelper->m_transform, &m_thisRot ); // Set Our Final Transform's Rotation From This One
+					}
+				}
+				updateView();
+				Refresh( false );
             }
             else
             {
@@ -225,7 +285,7 @@ void MainCanvas::OnMouseEvent( wxMouseEvent& event )
                         if (l_info->m_isSegmentOn && l_type->getType() < MESH ) //FloodFill Method (1click)
                         {
                             m_pDatasetHelper->m_isSegmentActive = true;
-                            m_hr = pick(event.GetPosition(), true);
+                            m_hr = pick(event.GetPosition(), false);
                             segment();                        
                             l_info->toggleSegment();                        
                         }
@@ -234,136 +294,23 @@ void MainCanvas::OnMouseEvent( wxMouseEvent& event )
                     {                        
                         m_hr = pick(event.GetPosition(), true);
                     }
-                    /*else if (!m_pDatasetHelper->m_isRulerToolActive && !m_pDatasetHelper->m_isSelectBckActive && m_pDatasetHelper->m_isSelectObjActive && (Anatomy*)l_info->m_isSegmentOn) //Prepare Drag for selectObj-GraphCut
-                    {
-                        m_hr = pick(event.GetPosition(), true);
-
-                        Vector current;
-                        current[0] = floor(m_hitPts[0]/m_pDatasetHelper->m_xVoxel);
-                        current[1] = floor(m_hitPts[1]/m_pDatasetHelper->m_yVoxel);
-                        current[2] = floor(m_hitPts[2]/m_pDatasetHelper->m_zVoxel);
-
-                        object.push_back(current);
-                        
-                    }
-                    else if (!m_pDatasetHelper->m_isRulerToolActive && m_pDatasetHelper->m_isSelectBckActive && !m_pDatasetHelper->m_isSelectObjActive && (Anatomy*)l_info->m_isSegmentOn) //Prepare Drag for selectBck-GraphCut
-                    {
-                        m_hr = pick(event.GetPosition(), true);
-
-                        Vector current;
-                        current[0] = floor(m_hitPts[0]/m_pDatasetHelper->m_xVoxel);
-                        current[1] = floor(m_hitPts[1]/m_pDatasetHelper->m_yVoxel);
-                        current[2] = floor(m_hitPts[2]/m_pDatasetHelper->m_zVoxel);
-
-                        background.push_back(current);
-                        
-                    }*/
-                    m_pDatasetHelper->m_ismDragging = true;
+                      
                     m_lastPos = event.GetPosition();
+                    m_pDatasetHelper->m_ismDragging = true;
                 }
-                else  if (!m_pDatasetHelper->m_isRulerToolActive && !m_isSceneLocked) //Move Scene
-                {                    
+                else  if (!m_isSceneLocked) //Move Scene
+                {
                     int xDrag = m_lastPos.x - clickX;
                     int yDrag = ( m_lastPos.y - clickY );
                     m_lastPos = event.GetPosition();
                     m_pDatasetHelper->moveScene( xDrag, yDrag );
                     Refresh( false );
                 }
-                /*else if(!m_pDatasetHelper->m_isRulerToolActive && (Anatomy*)l_info->m_isSegmentOn && m_pDatasetHelper->m_isSelectObjActive && !m_pDatasetHelper->m_isSelectBckActive) //Dragging for selectObj-Graphcut
-                {
-                    m_hr = pick(event.GetPosition(), true);
-
-                    Vector current;
-                    current[0] = floor(m_hitPts[0]/m_pDatasetHelper->m_xVoxel);
-                    current[1] = floor(m_hitPts[1]/m_pDatasetHelper->m_yVoxel);
-                    current[2] = floor(m_hitPts[2]/m_pDatasetHelper->m_zVoxel);
-                    
-                    
-
-                    if(current[0] != object.back()[0] || current[1] != object.back()[1] || current[2] != object.back()[2])
-                        object.push_back(current);
-                    
-                    m_pDatasetHelper->m_isObjfilled = true;
-                    m_pDatasetHelper->m_isObjCreated = true;
-                }
-                else if(!m_pDatasetHelper->m_isRulerToolActive && (Anatomy*)l_info->m_isSegmentOn && !m_pDatasetHelper->m_isSelectObjActive &&m_pDatasetHelper->m_isSelectBckActive) //Dragging for selectBck-Graphcut
-                {
-                    m_hr = pick(event.GetPosition(), true);
-
-                    Vector current;
-                    current[0] = floor(m_hitPts[0]/m_pDatasetHelper->m_xVoxel);
-                    current[1] = floor(m_hitPts[1]/m_pDatasetHelper->m_yVoxel);
-                    current[2] = floor(m_hitPts[2]/m_pDatasetHelper->m_zVoxel);
-                    
-                    
-
-                    if(current[0] != background.back()[0] || current[1] != background.back()[1] || current[2] != background.back()[2])
-                        background.push_back(current);
-
-                    m_pDatasetHelper->m_isBckfilled = true;
-                    m_pDatasetHelper->m_isBckCreated = true;
-                }*/
             }
             else
             {
                 m_pDatasetHelper->m_ismDragging = false;
             }
-            /*if ( !event.MiddleIsDown() && m_pDatasetHelper->m_isObjfilled && m_pDatasetHelper->m_isObjCreated)
-            {
-                std::vector<float>* result = new std::vector<float>;
-                result->resize(m_pDatasetHelper->m_columns*m_pDatasetHelper->m_rows*m_pDatasetHelper->m_frames);
-                for(unsigned int i = 0; i < object.size(); i++)
-                {
-                    int x = object.at(i)[0];
-                    int y = object.at(i)[1];
-                    int z = object.at(i)[2];
-
-                    result->at(x+(y*m_pDatasetHelper->m_columns)+(z*m_pDatasetHelper->m_rows*m_pDatasetHelper->m_columns)) = 1.0f;
-                
-                }
-
-                Anatomy* l_newAnatomy = new Anatomy(m_pDatasetHelper, result, 0);
-                l_newAnatomy->setShowFS(false);
-                l_newAnatomy->setType(OVERLAY);
-                l_newAnatomy->setName( _T( "(Object)" ) );
-                m_pDatasetHelper->m_mainFrame->m_listCtrl->InsertItem( 0, wxT( "" ), 0 );
-                m_pDatasetHelper->m_mainFrame->m_listCtrl->SetItem( 0, 1, l_newAnatomy->getName() );
-                m_pDatasetHelper->m_mainFrame->m_listCtrl->SetItem( 0, 2, wxT( "0.00") );
-                m_pDatasetHelper->m_mainFrame->m_listCtrl->SetItem( 0, 3, wxT( ""), 1 );
-                m_pDatasetHelper->m_mainFrame->m_listCtrl->SetItemData( 0, (long)l_newAnatomy );
-                m_pDatasetHelper->m_mainFrame->m_listCtrl->SetItemState( 0, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED );
-                
-                m_pDatasetHelper->m_isObjCreated = false;
-            }
-
-            if ( !event.MiddleIsDown() && m_pDatasetHelper->m_isBckfilled && m_pDatasetHelper->m_isBckCreated)
-            {
-                std::vector<float>* result = new std::vector<float>;
-                result->resize(m_pDatasetHelper->m_columns*m_pDatasetHelper->m_rows*m_pDatasetHelper->m_frames);
-                for(unsigned int i = 0; i < background.size(); i++)
-                {
-                    int x = background.at(i)[0];
-                    int y = background.at(i)[1];
-                    int z = background.at(i)[2];
-
-                    result->at(x+(y*m_pDatasetHelper->m_columns)+(z*m_pDatasetHelper->m_rows*m_pDatasetHelper->m_columns)) = 0.5f;
-                
-                }
-
-                Anatomy* l_newAnatomy = new Anatomy(m_pDatasetHelper, result, 0);
-                l_newAnatomy->setShowFS(false);
-                l_newAnatomy->setType(OVERLAY);
-                l_newAnatomy->setName( _T( "(Background)" ) );
-                m_pDatasetHelper->m_mainFrame->m_listCtrl->InsertItem( 0, wxT( "" ), 0 );
-                m_pDatasetHelper->m_mainFrame->m_listCtrl->SetItem( 0, 1, l_newAnatomy->getName() );
-                m_pDatasetHelper->m_mainFrame->m_listCtrl->SetItem( 0, 2, wxT( "0.00") );
-                m_pDatasetHelper->m_mainFrame->m_listCtrl->SetItem( 0, 3, wxT( ""), 1 );
-                m_pDatasetHelper->m_mainFrame->m_listCtrl->SetItemData( 0, (long)l_newAnatomy );
-                m_pDatasetHelper->m_mainFrame->m_listCtrl->SetItemState( 0, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED );
-
-                m_pDatasetHelper->m_isBckCreated = false;
-            }*/
-
             if ( event.GetWheelDelta() != 0 && !m_isSceneLocked)
             {
                 m_pDatasetHelper->changeZoom( event.GetWheelRotation() );
@@ -429,7 +376,7 @@ void MainCanvas::OnMouseEvent( wxMouseEvent& event )
                                 case SAGITTAL:
                                     n.x = 1.0;
                                     break;
-                            }                     
+                            }
                             
                             float delta = wxMax(wxMin(getAxisParallelMovement(m_lastPos.x, m_lastPos.y, clickX, clickY, n ),10),-10);
                             float mult = wxMin( m_pDatasetHelper->m_xVoxel, wxMin( m_pDatasetHelper->m_yVoxel, m_pDatasetHelper->m_zVoxel ) );
@@ -462,6 +409,7 @@ void MainCanvas::OnMouseEvent( wxMouseEvent& event )
                     {
                         ( (SelectionObject*) m_hr.object )->processDrag( event.GetPosition(), m_lastPos, m_projection, m_viewport, m_modelview);
                         m_pDatasetHelper->m_selBoxChanged = true;
+                        m_pDatasetHelper->m_isRTTDirty = true;
                     }
                     else if ( event.Dragging() && m_hr.picked == 20 )
                     {
@@ -551,7 +499,7 @@ float MainCanvas::getAxisParallelMovement( int x1, int y1, int x2, int y2, Vecto
     return bb / nb;
 }
 
-hitResult MainCanvas::pick( wxPoint click, bool isRuler)
+hitResult MainCanvas::pick( wxPoint click, bool isRulerOrDrawer)
 {
     //glPushMatrix();
 
@@ -607,9 +555,14 @@ hitResult MainCanvas::pick( wxPoint click, bool isRuler)
             if (m_pDatasetHelper->m_isRulerToolActive || m_pDatasetHelper->m_isSegmentActive)
             {
                 m_hitPts = bb->hitCoordinate(ray,CORONAL);
-                m_isRulerHit = isRuler;
+                m_isRulerHit = isRulerOrDrawer;
                 m_pDatasetHelper->m_isSegmentActive = false;
             }
+			else if (m_pDatasetHelper->m_isDrawerToolActive)
+			{
+				m_hitPts = bb->hitCoordinate(ray,CORONAL);
+				m_isDrawerHit = isRulerOrDrawer;
+			}
         }
         bb->setSizeZ( zSize );
         bb->setCenterZ( zPos );
@@ -629,9 +582,14 @@ hitResult MainCanvas::pick( wxPoint click, bool isRuler)
                 if (m_pDatasetHelper->m_isRulerToolActive || m_pDatasetHelper->m_isSegmentActive)
                 {
                     m_hitPts = bb->hitCoordinate(ray,AXIAL);
-                    m_isRulerHit = isRuler;
+                    m_isRulerHit = isRulerOrDrawer;
                     m_pDatasetHelper->m_isSegmentActive = false;
                 }
+				else if (m_pDatasetHelper->m_isDrawerToolActive)
+				{
+					m_hitPts = bb->hitCoordinate(ray,AXIAL);
+					m_isDrawerHit = isRulerOrDrawer;
+				}
             }            
         }
         bb->setSizeY( ySize );
@@ -649,11 +607,17 @@ hitResult MainCanvas::pick( wxPoint click, bool isRuler)
             {
                 picked = SAGITTAL;
                 tpicked = hr.tmin;
-                if (m_pDatasetHelper->m_isRulerToolActive || m_pDatasetHelper->m_isSegmentActive){
+                if (m_pDatasetHelper->m_isRulerToolActive || m_pDatasetHelper->m_isSegmentActive)
+				{
                     m_hitPts = bb->hitCoordinate(ray,SAGITTAL);
-                    m_isRulerHit = isRuler;
+                    m_isRulerHit = isRulerOrDrawer;
                     m_pDatasetHelper->m_isSegmentActive = false;
-                }                
+                }
+				else if (m_pDatasetHelper->m_isDrawerToolActive)
+				{
+					m_hitPts = bb->hitCoordinate(ray,SAGITTAL);
+					m_isDrawerHit = isRulerOrDrawer;
+				}
             }
         }
     }
@@ -747,6 +711,19 @@ void MainCanvas::render()
     {
         case MAIN_VIEW:
         {
+			/*if (m_pDatasetHelper->m_isRulerToolActive)
+			{
+				SetCursor( wxCursor( wxCURSOR_CROSS ) );
+			}
+			else if (m_pDatasetHelper->m_isDrawerToolActive)
+			{
+				SetCursor( wxCursor( wxCURSOR_PENCIL ) );
+			}
+			else
+			{
+				SetCursor( wxCursor( wxCURSOR_ARROW ) );
+			}*/
+
             if ( m_pDatasetHelper->m_scheduledScreenshot )
             {
                 int size = 0;        
@@ -814,7 +791,7 @@ void MainCanvas::render()
                     {
                         Vector lastPts = m_pDatasetHelper->m_rulerPts.back();
                         if( lastPts != m_hitPts)
-                        {                            
+                        {
                             m_pDatasetHelper->m_rulerPts.push_back(m_hitPts);                            
                         }
                     } 
@@ -824,6 +801,11 @@ void MainCanvas::render()
                     }
                     m_isRulerHit = false;
                 }
+				else if ( m_pDatasetHelper->m_isDrawerToolActive && m_isDrawerHit && (m_hr.picked == AXIAL || m_hr.picked == CORONAL || m_hr.picked == SAGITTAL))
+				{
+					m_isDrawerHit = false;
+				}
+
                 //renderTestRay();
                 if (m_pDatasetHelper->m_isShowAxes)
                 {
@@ -832,6 +814,22 @@ void MainCanvas::render()
                 if (m_pDatasetHelper->m_isRulerToolActive)
                 {
                     renderRulerDisplay();
+                }
+				else if (m_pDatasetHelper->m_isDrawerToolActive)
+				{
+					//TODO, may be useful later
+					//renderDrawerDisplay();
+				}
+                if (m_pDatasetHelper->m_isRTTDirty && m_pDatasetHelper->m_isRTTReady)
+                {
+                    m_pRealTimeFibers->seed();
+                }
+                else
+                {
+                    if(m_pRealTimeFibers->getSize() > 0)
+                    {
+                        m_pRealTimeFibers->renderRTTFibers();
+                    }
                 }
                 //save context for picking
                 glGetDoublev( GL_PROJECTION_MATRIX, m_projection );
@@ -849,11 +847,8 @@ void MainCanvas::render()
 
             if ( m_pDatasetHelper->m_mainFrame->m_pListCtrl->GetItemCount() != 0 )
             {
-                m_pDatasetHelper->m_anatomyHelper->renderNav( m_view, m_pDatasetHelper->m_shaderHelper->m_pTextureShader );
-                if ( m_pDatasetHelper->GLError() )
-                {
-                    m_pDatasetHelper->printGLError( wxT( "render nav view" ) );
-                }
+                m_pDatasetHelper->m_anatomyHelper->renderNav( m_view, &m_pDatasetHelper->m_shaderHelper->m_anatomyShader );
+                Logger::getInstance()->printIfGLError( wxT( "Render nav view" ) );
             }
     }    
     //glFlush();
@@ -876,7 +871,7 @@ void MainCanvas::invalidate()
     m_init = false;
 }
 
-void::MainCanvas::renderRulerDisplay()
+void MainCanvas::renderRulerDisplay()
 {
     glColor3f( 0.0f, 0.6f, 0.95f );
     glLineWidth (5);    
@@ -929,6 +924,7 @@ void MainCanvas::renderAxes()
             glVertex3f( 0, 0, 10);        
         glEnd();
     glLineWidth (1);
+
 }
 
 void MainCanvas::renderTestRay()
@@ -1011,7 +1007,7 @@ void MainCanvas::OnChar( wxKeyEvent& event )
             else if (m_pDatasetHelper->m_isRulerToolActive && m_pDatasetHelper->m_rulerPts.size()>0)
             {
                 m_pDatasetHelper->m_rulerPts.back().x -= m_pDatasetHelper->m_xVoxel;
-            } 
+            }
             else 
             {
                 m_pDatasetHelper->m_mainFrame->m_pXSlider->SetValue( wxMax(0, m_pDatasetHelper->m_mainFrame->m_pXSlider->GetValue() - 1) );
@@ -1051,6 +1047,10 @@ void MainCanvas::OnChar( wxKeyEvent& event )
             {
                 m_pDatasetHelper->m_rulerPts.back().y += m_pDatasetHelper->m_yVoxel;
             } 
+			else if (m_pDatasetHelper->m_isDrawerToolActive && m_pDatasetHelper->m_drawSize > 2)
+            {
+                m_pDatasetHelper->m_drawSize -= 1;
+            }
             else 
             {
                 m_pDatasetHelper->m_mainFrame->m_pYSlider->SetValue( wxMax(0, m_pDatasetHelper->m_mainFrame->m_pYSlider->GetValue() - 1) );
@@ -1070,6 +1070,10 @@ void MainCanvas::OnChar( wxKeyEvent& event )
             {
                 m_pDatasetHelper->m_rulerPts.back().y -= m_pDatasetHelper->m_yVoxel;
             } 
+			else if (m_pDatasetHelper->m_isDrawerToolActive)
+            {
+                m_pDatasetHelper->m_drawSize += 1;
+            }
             else 
             {
                 m_pDatasetHelper->m_mainFrame->m_pYSlider->SetValue(wxMin(m_pDatasetHelper->m_mainFrame->m_pYSlider->GetValue() + 1, m_pDatasetHelper->m_rows) );
@@ -1119,6 +1123,15 @@ void MainCanvas::OnChar( wxKeyEvent& event )
         case WXK_END:
             m_pDatasetHelper->m_rulerPts.clear();
             break; 
+		case 'z': case 'Z': //ctrl-z
+			//if ( wxGetKeyState( WXK_CONTROL ) )
+            //{
+				if(m_pDatasetHelper->m_isDrawerToolActive)
+				{
+					popAnatomyHistory();
+					break; 
+				}
+			//}
         default:
             event.Skip();
             return;
@@ -1136,6 +1149,55 @@ float MainCanvas::getElement(int i,int j,int k, std::vector<float>* vect)
 {
     float value = (*vect)[i+(j*m_pDatasetHelper->m_columns)+(k*m_pDatasetHelper->m_rows*m_pDatasetHelper->m_columns)];
     return value;
+}
+
+void MainCanvas::drawOnAnatomy() 
+{
+	// get selected anatomy dataset (that's the one we draw on)
+	long l_item = m_pDatasetHelper->m_mainFrame->m_pListCtrl->GetNextItem( -1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED );
+	Anatomy* l_currentAnatomy = (Anatomy*)m_pDatasetHelper->m_mainFrame->m_pListCtrl->GetItemData( l_item );
+
+	double xClick = floor(m_hitPts[0]/m_pDatasetHelper->m_xVoxel);
+	double yClick = floor(m_hitPts[1]/m_pDatasetHelper->m_yVoxel);
+	double zClick = floor(m_hitPts[2]/m_pDatasetHelper->m_zVoxel);
+	int layer = m_hr.picked;
+
+	//security check: hit detection can be a pixel offset, but negative positions crash
+	if(xClick < 0 || yClick < 0 || zClick < 0)
+	{
+		return;
+	}
+
+	if(m_pDatasetHelper->m_drawMode == m_pDatasetHelper->DRAWMODE_PEN)
+	{
+		l_currentAnatomy->writeVoxel((int)xClick, (int)yClick, (int)zClick, layer, m_pDatasetHelper->m_drawSize, m_pDatasetHelper->m_drawRound, m_pDatasetHelper->m_draw3d, m_pDatasetHelper->m_drawColor);
+	}
+	else if(m_pDatasetHelper->m_drawMode == m_pDatasetHelper->DRAWMODE_ERASER)
+	{
+		wxColor transparent(0,0,0);
+		l_currentAnatomy->writeVoxel((int)xClick, (int)yClick, (int)zClick, layer, m_pDatasetHelper->m_drawSize, m_pDatasetHelper->m_drawRound, m_pDatasetHelper->m_draw3d, transparent);
+	}
+}
+
+void MainCanvas::pushAnatomyHistory()
+{
+	// get selected anatomy dataset (that's the one we draw on)
+	long l_item = m_pDatasetHelper->m_mainFrame->m_pListCtrl->GetNextItem( -1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED );
+	Anatomy* l_currentAnatomy = (Anatomy*)m_pDatasetHelper->m_mainFrame->m_pListCtrl->GetItemData( l_item );
+
+	l_currentAnatomy->pushHistory();
+}
+
+void MainCanvas::popAnatomyHistory()
+{
+	// get selected anatomy dataset (that's the one we draw on)
+	long l_item = m_pDatasetHelper->m_mainFrame->m_pListCtrl->GetNextItem( -1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED );
+	Anatomy* l_currentAnatomy = (Anatomy*)m_pDatasetHelper->m_mainFrame->m_pListCtrl->GetItemData( l_item );
+	
+	//is this Anatomy in RGB or not?
+	bool isRGB = (l_currentAnatomy->getType() == RGB);
+
+	l_currentAnatomy->popHistory(isRGB);
 }
 
 //Kmeans Segmentation
@@ -1327,191 +1389,6 @@ void MainCanvas::floodFill(std::vector<float>* src, std::vector<float>* result, 
     }
 }
 
-//Graph Cut segmentation
-//Library Copyright 2007 Olga Veksler
-void MainCanvas::graphCut(std::vector<float>* src, std::vector<float>* result, float sigma)
-{
-    /*std::cout << "Graphcut" << endl;
-
-    int numLabels = 2;
-    int totalDimension, xDim, yDim, zDim;
-    int dataLength = m_pDatasetHelper->m_rows * m_pDatasetHelper->m_columns * m_pDatasetHelper->m_frames;
-    
-    //Estimate Gaussian parameters
-    //Means
-    float means[2],stddev[2];
-    
-    means[0] = 0;    
-    means[1] = 0;
-    for (unsigned int x = 0; x < object.size(); ++x)
-    {
-        int indice =(object.at(x)[0]+(object.at(x)[1]*(m_pDatasetHelper->m_columns))+(object.at(x)[2]*(m_pDatasetHelper->m_rows)*(m_pDatasetHelper->m_columns)));
-        means[0] += src->at(indice);
-    }
-
-    for (unsigned int x = 0; x < background.size(); ++x)
-    {
-        int indice =(background.at(x)[0]+(background.at(x)[1]*(m_pDatasetHelper->m_columns))+(background.at(x)[2]*(m_pDatasetHelper->m_rows)*(m_pDatasetHelper->m_columns)));
-        means[1] += src->at(indice);
-    }
-
-    means[0] = means[0]/object.size(); //Mean of the class 1
-    means[1] = means[1]/background.size(); //Mean of the class 2
-    
-    //Standard deviation
-    stddev[0] = 0;
-    stddev[1] = 0;
-    for (unsigned int x = 0; x < object.size(); ++x)
-    {
-        int indice =(object.at(x)[0]+(object.at(x)[1]*(m_pDatasetHelper->m_columns))+(object.at(x)[2]*(m_pDatasetHelper->m_rows)*(m_pDatasetHelper->m_columns)));
-        stddev[0] += SQR((src->at(indice)-means[0]));
-    }
-
-    for (unsigned int x = 0; x < background.size(); ++x)
-    {
-        int indice =(background.at(x)[0]+(background.at(x)[1]*(m_pDatasetHelper->m_columns))+(background.at(x)[2]*(m_pDatasetHelper->m_rows)*(m_pDatasetHelper->m_columns)));
-        stddev[1] += SQR((src->at(indice)-means[1]));
-    }
-
-    stddev[0] = sqrt(stddev[0]/object.size()); //stddev of the class 1
-    stddev[1] = sqrt(stddev[1]/background.size()); //stddev of the class 2 
-    
-
-    //Get the dimensions of the selection box (englobing the area of interest)
-    std::vector< std::vector< SelectionObject* > > l_selectionObjects = m_pDatasetHelper->getSelectionObjects();
-    int x1, x2, y1, y2, z1, z2;
-
-    for( unsigned int i = 0; i < l_selectionObjects.size(); ++i )
-    {
-        for( unsigned int j = 0; j < l_selectionObjects[i].size(); ++j )
-        {
-            if( l_selectionObjects[i][j]->getIsVisible() )
-            {
-                x1 = (int)( l_selectionObjects[i][j]->getCenter().x / m_pDatasetHelper->m_xVoxel - l_selectionObjects[i][j]->getSize().x / 2 );
-                x2 = (int)( l_selectionObjects[i][j]->getCenter().x / m_pDatasetHelper->m_xVoxel + l_selectionObjects[i][j]->getSize().x / 2 );
-                y1 = (int)( l_selectionObjects[i][j]->getCenter().y / m_pDatasetHelper->m_yVoxel - l_selectionObjects[i][j]->getSize().y / 2 );
-                y2 = (int)( l_selectionObjects[i][j]->getCenter().y / m_pDatasetHelper->m_yVoxel + l_selectionObjects[i][j]->getSize().y / 2 );
-                z1 = (int)( l_selectionObjects[i][j]->getCenter().z / m_pDatasetHelper->m_zVoxel - l_selectionObjects[i][j]->getSize().z / 2 );
-                z2 = (int)( l_selectionObjects[i][j]->getCenter().z / m_pDatasetHelper->m_zVoxel + l_selectionObjects[i][j]->getSize().z / 2 );
-
-                x1 = wxMax(0, wxMin(x1, m_pDatasetHelper->m_columns));
-                x2 = wxMax(0, wxMin(x2, m_pDatasetHelper->m_columns));
-                y1 = wxMax(0, wxMin(y1 ,m_pDatasetHelper->m_rows));
-                y2 = wxMax(0, wxMin(y2, m_pDatasetHelper->m_rows));
-                z1 = wxMax(0, wxMin(z1, m_pDatasetHelper->m_frames));
-                z2 = wxMax(0, wxMin(z2, m_pDatasetHelper->m_frames));
-            }
-        }
-    }
-
-    xDim = (x2-x1); //X width
-    yDim = (y2-y1); //Y width
-    zDim = (z2-z1); //Z width
-    totalDimension = xDim * yDim * zDim;
-
-    //Generate Graph cut algorithm 
-    GCoptimizationGeneralGraph gc(totalDimension,numLabels);
-    
-    //Datacost with Gaussian parameters for all Obj/Bck - final nodes links
-    for(int x = 0; x < xDim; x++)
-    {
-        for(int y = 0; y < yDim; y++)
-        {
-            for(int z = 0; z < zDim; z++)
-            {
-                for(int label = 0; label < numLabels; label++)
-                {
-                    int indice = (x+(y*(xDim))+(z*(yDim)*(xDim)));
-                    int current = (x+x1)+((y+y1)*(m_pDatasetHelper->m_columns))+((z+z1)*(m_pDatasetHelper->m_rows)*(m_pDatasetHelper->m_columns));
-                    int value = -logf(exp(-pow(current-means[label],2)/(2*stddev[label]*stddev[label]))/(sqrt(2*3.1416)*stddev[label]));
-                    gc.setDataCost(indice, label, value);
-                }
-            }
-        }
-    }
-
-    //Specify USER data cost between Obj/Back final nodes 
-    for(unsigned int i = 0; i < object.size(); i++)
-    {
-        int x = object.at(i)[0] - x1;
-        int y = object.at(i)[1] - y1;
-        int z = object.at(i)[2] - z1;
-
-        int indice = (x+(y*(xDim))+(z*(yDim)*(xDim)));
-        gc.setDataCost(indice, 0, numeric_limits<float>::infinity());
-        gc.setDataCost(indice, 1, 0.0f);
-    }
-
-    for(unsigned int i = 0; i < background.size(); i++)
-    {
-        int x = background.at(i)[0] - x1;
-        int y = background.at(i)[1] - y1;
-        int z = background.at(i)[2] - z1;
-
-        int indice = (x+(y*(xDim))+(z*(yDim)*(xDim)));
-        gc.setDataCost(indice, 0, 0.0f);
-        gc.setDataCost(indice, 1, numeric_limits<float>::infinity());
-    }
-
-    //Set smooth cost 
-    for (int l1 = 0; l1 < numLabels; l1++)
-    {
-        for (int l2 = 0; l2 < numLabels; l2++)
-        {
-            gc.setSmoothCost(l1, l2, abs(l1-l2));
-        }
-    }
-
-    // Specify the Neighboring with the function to optimize
-    
-    //Neighbors in X
-    for (int z = 0; z < zDim; z++ )
-        for (int y = 0; y < yDim; y++ )
-            for (int  x = 1; x < xDim; x++ )
-            {
-                int current = (x+x1)+((y+y1)*(m_pDatasetHelper->m_columns))+((z+z1)*(m_pDatasetHelper->m_rows)*(m_pDatasetHelper->m_columns));
-                int prec = ((x+x1-1)+((y+y1)*(m_pDatasetHelper->m_columns))+((z+z1)*(m_pDatasetHelper->m_rows)*(m_pDatasetHelper->m_columns)));
-                float value = std::exp(-SQR(src->at(current) - src->at(prec))/2*sigma*sigma);
-                gc.setNeighbors(x+(y*(xDim))+(z*(yDim)*(xDim)),(x-1)+(y*(xDim))+(z*(yDim)*(xDim)),value);
-            }
-
-    //Neighbors in Y
-    for (int z = 0; z < zDim; z++ )
-        for (int y = 1; y < yDim; y++ )
-            for (int  x = 0; x < xDim; x++ )
-            {
-                int current = (x+x1)+((y+y1)*(m_pDatasetHelper->m_columns))+((z+z1)*(m_pDatasetHelper->m_rows)*(m_pDatasetHelper->m_columns));
-                int prec = ((x+x1)+((y+y1-1)*(m_pDatasetHelper->m_columns))+((z+z1)*(m_pDatasetHelper->m_rows)*(m_pDatasetHelper->m_columns)));
-                float value = std::exp(-SQR(src->at(current) - src->at(prec))/2*sigma*sigma);
-                gc.setNeighbors(x+(y*(xDim))+(z*(yDim)*(xDim)),x+((y-1)*(xDim))+(z*(yDim)*(xDim)),value);
-            }
-
-    //Neighbors in Z
-    for (int z = 1; z < zDim; z++ )
-        for (int y = 0; y < yDim; y++ )
-            for (int  x = 0; x < xDim; x++ )
-            {
-                int current = (x+x1)+((y+y1)*(m_pDatasetHelper->m_columns))+((z+z1)*(m_pDatasetHelper->m_rows)*(m_pDatasetHelper->m_columns));
-                int prec = ((x+x1)+((y+y1)*(m_pDatasetHelper->m_columns))+((z+z1-1)*(m_pDatasetHelper->m_rows)*(m_pDatasetHelper->m_columns)));
-                float value = std::exp(-SQR(src->at(current) - src->at(prec))/2.0f*sigma*sigma);
-                gc.setNeighbors(x+(y*(xDim))+(z*(yDim)*(xDim)),x+(y*(xDim))+((z-1)*(yDim)*(xDim)),value);
-            }
-
-    gc.expansion();
-
-    //Save results 
-    for(int x = 0; x < xDim; x++)
-    {
-        for(int y = 0; y < yDim; y++)
-        {
-            for(int z = 0; z < zDim; z++)
-            {
-                float value = gc.whatLabel((x+(y*(xDim))+(z*(yDim)*(xDim))));
-                result->at((x+x1)+((y+y1)*m_pDatasetHelper->m_columns)+((z+z1)*m_pDatasetHelper->m_rows*m_pDatasetHelper->m_columns)) = value;
-            }
-        }
-    }*/
-}
 //Segment selected area 
 void MainCanvas::segment()
 {
@@ -1537,11 +1414,12 @@ void MainCanvas::segment()
         case 0 :
             {
                 float threshold = l_info->getFloodThreshold();
+                std::cout << m_hitPts[0] << " " << m_hitPts[1] << " " << m_hitPts[2] << "\n";
                 floodFill(sourceData, resultData, m_hitPts, threshold);
                 break;
             }
 
-        case 1 :
+       /* case 1 :
             {
                 float sigma = l_info->getGraphSigma();
                 graphCut(sourceData, resultData,sigma);
@@ -1553,7 +1431,7 @@ void MainCanvas::segment()
                 float means[2], stddev[2], apriori[2];
                 KMeans(means,stddev,apriori,sourceData,resultData);
                 break;
-            }
+            }*/
     }
         
     //Create a new anatomy for the tumor
@@ -1570,4 +1448,9 @@ void MainCanvas::segment()
     m_pDatasetHelper->m_mainFrame->m_pListCtrl->SetItemData( 0, (long)l_newAnatomy );
     m_pDatasetHelper->m_mainFrame->m_pListCtrl->SetItemState( 0, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED );
 }
+
+
+
+    
+    
 

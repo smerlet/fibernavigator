@@ -59,12 +59,16 @@ public:
     MyListCtrl(MainFrame *parent, const wxWindowID id, const wxPoint& pos,
             const wxSize& size, long style);
 
+	long GetSelectedItem();
     void OnLeftClick(wxMouseEvent& event);
     void OnRightClick(wxMouseEvent& event);
     int getColClicked();
     int getColActivated();
     void moveItemUp(long);
     void moveItemDown(long);
+	void moveItemAt(long item, long pos);
+	void unselectAll();
+	void swap(long, long);
     
     bool DeleteItem(long item);
 
@@ -72,7 +76,6 @@ private:
     MainFrame *m_mainFrame;
     int m_col_clicked;
     int m_col_activated;
-    void swap(long, long);
 
     DECLARE_EVENT_TABLE()
 }    ;

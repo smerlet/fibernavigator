@@ -17,6 +17,7 @@
 
 #include "Anatomy.h"
 #include "../main.h"
+#include "../Logger.h"
 
 #include "../misc/Fantom/FMatrix.h"
 
@@ -32,15 +33,26 @@ Fibers::Fibers( DatasetHelper *pDatasetHelper )
       m_isInitialized( false ),
       m_normalsPositive( false ),
       m_cachedThreshold( 0.0f ),
+	  m_fibersInverted( false ),
+	  m_useFakeTubes( false ),
+	  m_useTransparency( false ),
+	  m_isColorationUpdated( false ),
+	  m_fiberColorationMode( NORMAL_COLOR ),
       m_pKdTree( NULL ),
-      m_pOctree( NULL )
+      m_pOctree( NULL ),
+      m_cfDrawDirty( true ),
+      m_axialShown( pDatasetHelper->m_showAxial ),
+      m_coronalShown( pDatasetHelper->m_showCoronal ),
+      m_sagittalShown( pDatasetHelper->m_showSagittal ),
+      m_useCrossingFibers( false ),
+      m_thickness( 2.5f )
 {
     m_bufferObjects         = new GLuint[3];
 }
 
 Fibers::~Fibers()
 {
-    m_dh->printDebug( _T( "executing fibers destructor" ), 1 );
+    Logger::getInstance()->print( wxT( "executing fibers destructor" ), LOGLEVEL_MESSAGE );
     m_dh->m_fibersLoaded = false;
 
     if( m_dh->m_useVBO )
@@ -112,7 +124,7 @@ bool Fibers::load( wxString filename )
 bool Fibers::loadTRK( const wxString &filename )
 {
     stringstream ss;
-    m_dh->printDebug( wxT( "Start loading TRK file..." ), 1 );
+    Logger::getInstance()->print( wxT( "Loading TRK file..." ), LOGLEVEL_MESSAGE );
     wxFile dataFile;
     wxFileOffset nSize( 0 );
     converterByteINT16 cbi;
@@ -143,7 +155,7 @@ bool Fibers::loadTRK( const wxString &filename )
     memcpy( idString, &pBuffer[0], 6 );
     ss.str( "" );
     ss << "Type: " << idString;
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
 
     if( strncmp( idString, "TRACK", 5 ) != 0 ) 
     {
@@ -161,7 +173,7 @@ bool Fibers::loadTRK( const wxString &filename )
 
     ss.str( "" );
     ss << "Dim: " << dim[0] << "x" << dim[1] << "x" << dim[2];
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
     
     //Voxel size of the image volume. [12 bytes]
     float voxelSize[3];
@@ -174,7 +186,7 @@ bool Fibers::loadTRK( const wxString &filename )
 
     ss.str( "" );
     ss << "Voxel size: " << voxelSize[0] << "x" << voxelSize[1] << "x" << voxelSize[2];
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
 
     //Origin of the image volume. [12 bytes]
     float origin[3];
@@ -187,7 +199,7 @@ bool Fibers::loadTRK( const wxString &filename )
 
     ss.str( "" );
     ss << "Origin: (" << origin[0] << "," << origin[1] << "," << origin[2] << ")";
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
     
     //Number of scalars saved at each track point. [2 bytes]
     wxUint16 nbScalars;
@@ -195,7 +207,7 @@ bool Fibers::loadTRK( const wxString &filename )
     nbScalars = cbi.i;
     ss.str( "" );
     ss << "Nb. scalars: " << nbScalars;
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
     
     //Name of each scalar. (20 characters max each, max 10 names) [200 bytes]
     char scalarNames[10][20];
@@ -205,7 +217,7 @@ bool Fibers::loadTRK( const wxString &filename )
     {
         ss.str( "" );
         ss << "Scalar name #" << i << ": " << scalarNames[i];
-        m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+        Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
     }
 
     //Number of properties saved at each track. [2 bytes]
@@ -214,7 +226,7 @@ bool Fibers::loadTRK( const wxString &filename )
     nbProperties = cbi.i;
     ss.str( "" );
     ss << "Nb. properties: " << nbProperties;
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
     
     //Name of each property. (20 characters max each, max 10 names) [200 bytes]
     char propertyNames[10][20];
@@ -242,7 +254,7 @@ bool Fibers::loadTRK( const wxString &filename )
             ss << voxToRas[i][j] << " ";
         }
 
-        m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+        Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
     }
 
     //Reserved space for future version. [444 bytes]
@@ -253,14 +265,14 @@ bool Fibers::loadTRK( const wxString &filename )
     memcpy( voxelOrder, &pBuffer[948], 4 );
     ss.str( "" );
     ss << "Voxel order: " << voxelOrder;
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
     
     //Paddings [4 bytes]
     char pad2[4];
     memcpy( pad2, &pBuffer[952], 4 );
     ss.str( "" );
     ss << "Pad #2: " << pad2;
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
     
     //Image orientation of the original image. As defined in the DICOM header. [24 bytes]
     float imageOrientationPatient[6];
@@ -274,50 +286,50 @@ bool Fibers::loadTRK( const wxString &filename )
         ss << imageOrientationPatient[i] << " ";
     }
 
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
     
     //Paddings. [2 bytes]
     char pad1[2];
     memcpy( pad1, &pBuffer[980], 2 );
     ss.str( "" );
     ss << "Pad #1: " << pad1;
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
     
     //Inversion/rotation flags used to generate this track file. [1 byte]
     bool invertX = pBuffer[982] > 0;
     ss.str( "" );
     ss << "Invert X: " << invertX;
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
 
     //Inversion/rotation flags used to generate this track file. [1 byte]
     bool invertY = pBuffer[983] > 0;
     ss.str( "" );
     ss << "Invert Y: " << invertY;
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
 
     //Inversion/rotation flags used to generate this track file. [1 byte]
     bool invertZ = pBuffer[984] > 0;
     ss.str( "" );
     ss << "Invert Z: " << invertZ;
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
 
     //Inversion/rotation flags used to generate this track file. [1 byte]
     bool swapXY = pBuffer[985] > 0;
     ss.str( "" );
     ss << "Swap XY: " << swapXY;
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
 
     //Inversion/rotation flags used to generate this track file. [1 byte]
     bool swapYZ = pBuffer[986] > 0;
     ss.str( "" );
     ss << "Swap YZ: " << swapYZ;
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
 
     //Inversion/rotation flags used to generate this track file. [1 byte]
     bool swapZX = pBuffer[987] > 0;
     ss.str( "" );
     ss << "Swap ZX: " << swapZX;
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
 
     //Number of tracks stored in this track file. 0 means the number was NOT stored. [4 bytes]
     wxUint32 nbCount;
@@ -325,7 +337,7 @@ bool Fibers::loadTRK( const wxString &filename )
     nbCount = cbi32.i;
     ss.str( "" );
     ss << "Nb. tracks: " << nbCount;
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
 
     //Version number. Current version is 2. [4 bytes]
     wxUint32 version;
@@ -333,7 +345,7 @@ bool Fibers::loadTRK( const wxString &filename )
     version = cbi32.i;
     ss.str( "" );
     ss << "Version: " << version;
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
     
     //Size of the header. Used to determine byte swap. Should be 1000. [4 bytes]
     wxUint32 hdrSize;
@@ -341,7 +353,7 @@ bool Fibers::loadTRK( const wxString &filename )
     hdrSize = cbi32.i;
     ss.str( "" );
     ss << "HDR size: " << hdrSize;
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
 
     ////
     // READ DATA
@@ -350,17 +362,21 @@ bool Fibers::loadTRK( const wxString &filename )
     pBuffer = NULL;
     vector<float> tmpPoints;
 
-    if( nbCount == 0 )
-    {
-        return false; //TODO: handle it. (0 means the number was NOT stored.)
-    }
+    //File size - header size (used when the number of fiber was not stored)
+    int remainingBytes = nSize - hdrSize;
 
     vector< vector< float > > lines;
     m_countPoints = 0;
     vector< float > colors;
 
-    for( unsigned int i = 0; i != nbCount; ++i )
-    {
+	 //if( nbCount == 0 )
+    //{
+    //   return false; //TODO: handle it. (0 means the number was NOT stored.)
+    //}
+
+    for( unsigned int i = 0; i < nbCount || remainingBytes > 0; ++i )
+    //for( unsigned int i = 0; i != nbCount ; ++i )
+	 {
         //Number of points in this track. [4 bytes]
         wxUint32 nbPoints;
         dataFile.Read( cbi32.b, ( size_t )4 );
@@ -402,6 +418,13 @@ bool Fibers::loadTRK( const wxString &filename )
         lines.push_back( curLine );
         delete[] pBuffer;
         pBuffer = NULL;
+
+       //Adjust remainingBytes
+       remainingBytes -= 1*4; //Number of points (4 bytes)
+       remainingBytes -= 3*nbPoints * 4; //Coordinates (4 bytes)
+       remainingBytes -= nbScalars*nbPoints * 4; //Scalars (4 bytes)
+       remainingBytes -= nbProperties * 4; //Properties (4 bytes)
+		 //cout <<  "i : " << i << ", remainingBytes : " << remainingBytes << "\n";
     }
 
     dataFile.Close();
@@ -409,7 +432,7 @@ bool Fibers::loadTRK( const wxString &filename )
     ////
     //POST PROCESS: set all the data in the right format for the navigator
     ////
-    m_dh->printDebug( wxT( "Setting data in right format for the navigator..." ), 1 );
+    Logger::getInstance()->print( wxT( "Setting data in right format for the navigator..." ), LOGLEVEL_MESSAGE );
     m_countLines = lines.size();
     m_dh->m_countFibers = m_countLines;
     m_pointArray.max_size();
@@ -423,10 +446,10 @@ bool Fibers::loadTRK( const wxString &filename )
     m_filtered.resize( m_countLines, false );
     ss.str( "" );
     ss << "m_countLines: " << m_countLines;
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
     ss.str( "" );
     ss << "m_countPoints: " << m_countPoints;
-    m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+    Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
     m_linePointers[0] = 0;
 
     for( int i = 0; i < m_countLines; ++i )
@@ -454,8 +477,11 @@ bool Fibers::loadTRK( const wxString &filename )
         vector< float >::iterator it2;
 
         for( it2 = ( *it ).begin(); it2 < ( *it ).end(); it2++ )
-        {
-            m_colorArray[pos] = colors[pos] / 255.;
+        {   
+				if (colors.size() > 0)
+				{
+	            m_colorArray[pos] = colors[pos] / 255.;
+				}
             m_pointArray[pos++] = *it2;
         }
     }
@@ -464,13 +490,13 @@ bool Fibers::loadTRK( const wxString &filename )
     {
         ss.str( "" );
         ss << "Using anatomy's voxel size: [" << m_dh->m_xVoxel << "," << m_dh->m_yVoxel << "," << m_dh->m_zVoxel << "]";
-        m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+        Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
         voxelSize[0] = m_dh->m_xVoxel;
         voxelSize[1] = m_dh->m_yVoxel;
         voxelSize[2] = m_dh->m_zVoxel;
         ss.str( "" );
         ss << "Centering with respect to the anatomy: [" << m_dh->m_columns / 2 << "," << m_dh->m_rows / 2 << "," << m_dh->m_frames / 2 << "]";
-        m_dh->printDebug( wxString( ss.str().c_str(), wxConvUTF8 ), 1 );
+        Logger::getInstance()->print( wxString( ss.str().c_str(), wxConvUTF8 ), LOGLEVEL_MESSAGE );
         origin[0] = m_dh->m_columns / 2;
         origin[1] = m_dh->m_rows / 2;
         origin[2] = m_dh->m_frames / 2;
@@ -493,22 +519,22 @@ bool Fibers::loadTRK( const wxString &filename )
         m_pointArray[i] = flipZ * ( m_pointArray[i] - origin[2] ) * ( m_dh->m_zVoxel / voxelSize[2] ) + anatomy[2];
     }
 
-    m_dh->printDebug( wxT( "End loading TRK file" ), 1 );
+    Logger::getInstance()->print( wxT( "TRK file loaded" ), LOGLEVEL_MESSAGE );
     createColorArray( colors.size() > 0 );
     m_type = FIBERS;
     m_fullPath = filename;
     //m_pKdTree = new KdTree( m_countPoints, &m_pointArray[0], m_dh );
 #ifdef __WXMSW__
-    m_name = filename.AfterLast( '\\' );
+    m_name = wxT( "-" ) + filename.AfterLast( '\\' );
 #else
-    m_name = filename.AfterLast( '/' );
+    m_name = wxT( "-" ) + filename.AfterLast( '/' );
 #endif
     return true;
 }
 
 bool Fibers::loadCamino( const wxString &filename )
 {
-    m_dh->printDebug( _T( "start loading Camino file" ), 1 );
+    Logger::getInstance()->print( wxT( "Loading Camino file" ), LOGLEVEL_MESSAGE );
     wxFile dataFile;
     wxFileOffset nSize = 0;
 
@@ -583,7 +609,7 @@ bool Fibers::loadCamino( const wxString &filename )
     }
 
     printf( "%d lines and %d points \n", m_countLines, m_countPoints );
-    m_dh->printDebug( _T( "move vertices" ), 1 );
+    Logger::getInstance()->print( wxT( "Move vertices" ), LOGLEVEL_MESSAGE );
 
     for( int i = 0; i < m_countPoints * 3; ++i )
     {
@@ -596,7 +622,7 @@ bool Fibers::loadCamino( const wxString &filename )
 
     calculateLinePointers();
     createColorArray( false );
-    m_dh->printDebug( _T( "read all" ), 1 );
+    Logger::getInstance()->print( wxT( "Read all" ), LOGLEVEL_MESSAGE );
     delete[] pBuffer;
     pBuffer = NULL;
     
@@ -604,9 +630,9 @@ bool Fibers::loadCamino( const wxString &filename )
     m_type = FIBERS;
     m_fullPath = filename;
 #ifdef __WXMSW__
-    m_name = filename.AfterLast( '\\' );
+    m_name = wxT( "-" ) + filename.AfterLast( '\\' );
 #else
-    m_name = filename.AfterLast( '/' );
+    m_name = wxT( "-" ) + filename.AfterLast( '/' );
 #endif
     //m_pKdTree = new KdTree( m_countPoints, &m_pointArray[0], m_dh );
     return true;
@@ -614,7 +640,7 @@ bool Fibers::loadCamino( const wxString &filename )
 
 bool Fibers::loadMRtrix( const wxString &filename )
 {
-    m_dh->printDebug( _T( "start loading MRtrix file" ), 1 );
+    Logger::getInstance()->print( wxT( "Loading MRtrix file" ), LOGLEVEL_MESSAGE );
     wxFile dataFile;
     long int nSize = 0;
     long int pc = 0, nodes = 0;
@@ -629,18 +655,20 @@ bool Fibers::loadMRtrix( const wxString &filename )
     // read header
     ////
     char lineBuffer[200];
+    std::string readLine("");
 
-    for( int i = 0; i < 22; ++i )
+    while(readLine.find( "END" ) == std::string::npos)
     {
         fgets( lineBuffer, 200, pFs );
-        std::string s0( lineBuffer );
 
-        if( s0.find( "file" ) != std::string::npos )
+        readLine = std::string( lineBuffer );
+
+        if( readLine.find( "file" ) != std::string::npos )
         {
             sscanf( lineBuffer, "file: . %ld", &pc );
         }
 
-        if( s0.find( "count" ) != std::string::npos )
+        if( readLine.find( "count" ) != std::string::npos )
         {
             sscanf( lineBuffer, "count: %i", &m_countLines );
         }
@@ -835,22 +863,22 @@ bool Fibers::loadMRtrix( const wxString &filename )
         i += 2;
     }
 
-    m_dh->printDebug( wxT( "End loading TCK file" ), 1 );
+    Logger::getInstance()->print( wxT( "TCK file loaded" ), LOGLEVEL_MESSAGE );
     createColorArray( false );
     m_type = FIBERS;
     m_fullPath = filename;
     //m_pKdTree = new KdTree( m_countPoints, &m_pointArray[0], m_dh );
 #ifdef __WXMSW__
-    m_name = filename.AfterLast( '\\' );
+    m_name = wxT( "-" ) + filename.AfterLast( '\\' );
 #else
-    m_name = filename.AfterLast( '/' );
+    m_name = wxT( "-" ) + filename.AfterLast( '/' );
 #endif
     return true;
 }
 
 bool Fibers::loadPTK( const wxString &filename )
 {
-    m_dh->printDebug( _T( "start loading PTK file" ), 1 );
+    Logger::getInstance()->print( wxT( "Loading PTK file" ), LOGLEVEL_MESSAGE );
     wxFile dataFile;
     wxFileOffset nSize = 0;
     int pc = 0;
@@ -915,7 +943,7 @@ bool Fibers::loadPTK( const wxString &filename )
     }
 
     printf( "%d lines and %d points \n", m_countLines, m_countPoints );
-    m_dh->printDebug( _T( "move vertices" ), 1 );
+    Logger::getInstance()->print( wxT( "Move vertices" ), LOGLEVEL_MESSAGE );
 
     /*for( int i = 0; i < m_countPoints * 3; ++i )
     {
@@ -945,7 +973,7 @@ bool Fibers::loadPTK( const wxString &filename )
 
     calculateLinePointers();
     createColorArray( false );
-    m_dh->printDebug( _T( "read all" ), 1 );
+    Logger::getInstance()->print( wxT( "Read all" ), LOGLEVEL_MESSAGE );
     
     delete[] pBuffer;
     pBuffer = NULL;
@@ -954,9 +982,9 @@ bool Fibers::loadPTK( const wxString &filename )
     m_type = FIBERS;
     m_fullPath = filename;
 #ifdef __WXMSW__
-    m_name = filename.AfterLast( '\\' );
+    m_name = wxT( "-" ) + filename.AfterLast( '\\' );
 #else
-    m_name = filename.AfterLast( '/' );
+    m_name = wxT( "-" ) + filename.AfterLast( '/' );
 #endif
     //m_pKdTree = new KdTree( m_countPoints, &m_pointArray[0], m_dh );
     return true;
@@ -964,7 +992,7 @@ bool Fibers::loadPTK( const wxString &filename )
 
 bool Fibers::loadVTK( const wxString &filename )
 {
-    m_dh->printDebug( _T( "start loading VTK file" ), 1 );
+    Logger::getInstance()->print( wxT( "Loading VTK file" ), LOGLEVEL_MESSAGE );
     wxFile dataFile;
     wxFileOffset nSize = 0;
 
@@ -1175,7 +1203,7 @@ bool Fibers::loadVTK( const wxString &filename )
         pointColorOffset = fileOffset;
     }
 
-    m_dh->printDebug( wxString::Format( _T( "loading %d points and %d lines." ), countPoints, countLines ), 1 );
+    Logger::getInstance()->print( wxString::Format( wxT( "Loading %d points and %d lines" ), countPoints, countLines ), LOGLEVEL_MESSAGE );
     m_countLines        = countLines;
     m_dh->m_countFibers = m_countLines;
     m_countPoints       = countPoints;
@@ -1209,7 +1237,7 @@ bool Fibers::loadVTK( const wxString &filename )
     }
 
     toggleEndianess();
-    m_dh->printDebug( _T( "move vertices" ), 1 );
+    Logger::getInstance()->print( wxT( "Move vertices" ), LOGLEVEL_MESSAGE );
 
     for( int i = 0; i < countPoints * 3; ++i )
     {
@@ -1222,13 +1250,13 @@ bool Fibers::loadVTK( const wxString &filename )
 
     calculateLinePointers();
     createColorArray( colorsLoadedFromFile );
-    m_dh->printDebug( _T( "read all" ), 1 );
+    Logger::getInstance()->print( wxT( "Read all" ), LOGLEVEL_MESSAGE );
     m_type      = FIBERS;
     m_fullPath  = filename;
 #ifdef __WXMSW__
-    m_name = filename.AfterLast( '\\' );
+    m_name = wxT( "-" ) + filename.AfterLast( '\\' );
 #else
-    m_name = filename.AfterLast( '/' );
+    m_name = wxT( "-" ) + filename.AfterLast( '/' );
 #endif
     //m_pKdTree = new KdTree( m_countPoints, &m_pointArray[0], m_dh );
     delete[] pBuffer;
@@ -1370,9 +1398,9 @@ bool Fibers::loadDmri( const wxString &filename )
     m_fullPath = filename;
     //m_pKdTree = new KdTree( m_countPoints, &m_pointArray[0], m_dh );
 #ifdef __WXMSW__
-    m_name = filename.AfterLast( '\\' );
+    m_name = /*"-"+*/ filename.AfterLast( '\\' );
 #else
-    m_name = filename.AfterLast( '/' );
+    m_name = /*"-" +*/ filename.AfterLast( '/' );
 #endif
     return true;
 }
@@ -1493,43 +1521,43 @@ void Fibers::loadTestFibers()
 // This function will call the proper coloring function for the fibers.
 ///////////////////////////////////////////////////////////////////////////
 void Fibers::updateFibersColors()
-{
-    if( m_dh->m_fiberColorationMode == NORMAL_COLOR )
+{	
+    if( m_fiberColorationMode == NORMAL_COLOR )
     {
         resetColorArray();
     }
     else
     {
-        float *pColorData    = NULL;
-
-        if( m_dh->m_useVBO )
-        {
-            glBindBuffer( GL_ARRAY_BUFFER, m_bufferObjects[1] );
-            pColorData  = ( float * ) glMapBuffer( GL_ARRAY_BUFFER, GL_READ_WRITE );
-        }
+		float *pColorData( NULL );
+		
+		if( m_dh->m_useVBO )
+		{
+			glBindBuffer( GL_ARRAY_BUFFER, m_bufferObjects[1] );
+			pColorData = ( float * ) glMapBuffer( GL_ARRAY_BUFFER, GL_READ_WRITE );
+		}
         else
         {
             pColorData  = &m_colorArray[0];
         }
 
-        if( m_dh->m_fiberColorationMode == CURVATURE_COLOR )
+        if( m_fiberColorationMode == CURVATURE_COLOR )
         {
             colorWithCurvature( pColorData );
         }
-        else if( m_dh->m_fiberColorationMode == TORSION_COLOR )
+        else if( m_fiberColorationMode == TORSION_COLOR )
         {
             colorWithTorsion( pColorData );
         }
-        else if( m_dh->m_fiberColorationMode == DISTANCE_COLOR )
+        else if( m_fiberColorationMode == DISTANCE_COLOR )
         {
             colorWithDistance( pColorData );
         }
-        else if( m_dh->m_fiberColorationMode == MINDISTANCE_COLOR )
+        else if( m_fiberColorationMode == MINDISTANCE_COLOR )
         {
             colorWithMinDistance( pColorData );
         }
 
-        if( m_dh->m_useVBO )
+        if( m_dh->m_useVBO)
         {
             glUnmapBuffer( GL_ARRAY_BUFFER );
         }
@@ -1736,6 +1764,11 @@ void Fibers::colorWithCurvature( float *pColorData )
 ///////////////////////////////////////////////////////////////////////////
 void Fibers::colorWithDistance( float *pColorData )
 {
+	if( pColorData == NULL )
+    {
+        return;
+    }
+
     SelectionTree::SelectionObjectVector selectionObjects = m_dh->m_pSelectionTree->getAllObjects();
 
     vector< SelectionObject* > simplifiedList;
@@ -1796,6 +1829,11 @@ void Fibers::colorWithDistance( float *pColorData )
 
 void Fibers::colorWithMinDistance( float *pColorData )
 {
+	if( pColorData == NULL )
+    {
+        return;
+    }
+	
     SelectionTree::SelectionObjectVector selectionObjects = m_dh->m_pSelectionTree->getAllObjects();
     
     vector< SelectionObject* > simplifiedList;
@@ -1883,14 +1921,17 @@ void Fibers::colorWithMinDistance( float *pColorData )
     }
 }
 
-void Fibers::generateFiberVolume()
+Anatomy* Fibers::generateFiberVolume()
 {
-    float *pColorData( NULL );
-
-    if( m_dh->m_useVBO )
+	float* pColorData( NULL );
+	if( m_dh->m_useVBO )
     {
-        glBindBuffer( GL_ARRAY_BUFFER, m_bufferObjects[1] );
-        pColorData  = ( float * ) glMapBuffer( GL_ARRAY_BUFFER, GL_READ_WRITE );
+		glBindBuffer( GL_ARRAY_BUFFER, m_bufferObjects[1] );
+			
+		#ifdef __WXMAC__
+			//glBufferData(GL_ARRAY_BUFFER, getPointCount()*3 + 2, NULL, GL_STREAM_DRAW);
+		#endif
+		pColorData = ( float * ) glMapBuffer( GL_ARRAY_BUFFER, GL_READ_WRITE );
     }
     else
     {
@@ -1903,15 +1944,23 @@ void Fibers::generateFiberVolume()
     }
 
     Anatomy *pTmpAnatomy = new Anatomy( m_dh, RGB );
-    pTmpAnatomy->setName( wxT( "Fiber-Density Volume" ) );
+    pTmpAnatomy->setName( m_name.BeforeFirst( '.' ) + wxT(" Fiber-Density Volume" ) );
     
-    m_dh->m_mainFrame->m_pListCtrl->InsertItem( 0, wxT( "" ), 0 );
-    m_dh->m_mainFrame->m_pListCtrl->SetItem( 0, 1, pTmpAnatomy->getName() );
-    m_dh->m_mainFrame->m_pListCtrl->SetItem( 0, 2, wxT( "1.0" ) );
-    m_dh->m_mainFrame->m_pListCtrl->SetItem( 0, 3, wxT( "" ), 1 );
-    m_dh->m_mainFrame->m_pListCtrl->SetItemData( 0, ( long ) pTmpAnatomy );
-    m_dh->m_mainFrame->m_pListCtrl->SetItemState( 0, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED );
-    
+	#ifdef __WXMAC__
+		// insert at zero is a well-known bug on OSX, so we append there...
+		// http://trac.wxwidgets.org/ticket/4492
+		long l_id = m_dh->m_mainFrame->m_pListCtrl->GetItemCount();
+	#else
+		long l_id = 0;
+	#endif 
+	
+    m_dh->m_mainFrame->m_pListCtrl->InsertItem( l_id, wxT( "" ), 0 );
+    m_dh->m_mainFrame->m_pListCtrl->SetItem( l_id, 1, pTmpAnatomy->getName() );
+    m_dh->m_mainFrame->m_pListCtrl->SetItem( l_id, 2, wxT( "1.0" ) );
+    m_dh->m_mainFrame->m_pListCtrl->SetItem( l_id, 3, wxT( "" ), 1 );
+    m_dh->m_mainFrame->m_pListCtrl->SetItemData( l_id, ( long ) pTmpAnatomy );
+    m_dh->m_mainFrame->m_pListCtrl->SetItemState( l_id, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED );
+	
     m_dh->updateLoadStatus();
     m_dh->m_mainFrame->refreshAllGLWidgets();
 
@@ -1931,31 +1980,21 @@ void Fibers::generateFiberVolume()
     {
         glUnmapBuffer( GL_ARRAY_BUFFER );
     }
+	
+	return pTmpAnatomy;
 }
 
-/**
- * Save using the VTK binary format.
- */
-void Fibers::save( wxString filename )
+void Fibers::getFibersInfoToSave( vector<float>& pointsToSave,  vector<int>& linesToSave, vector<int>& colorsToSave, int& countLines )
 {
-    vector< float >   pointsToSave;
-    vector< int >     linesToSave;
-    vector< wxUint8 > colorsToSave;
-
     int pointIndex( 0 );
-    int countLines( 0 );
+    countLines = 0;
 
-    if( filename.AfterLast( '.' ) != _T( "fib" ) )
+	float *pColorData( NULL );
+	
+	if( m_dh->m_useVBO )
     {
-        filename += _T( ".fib" );
-    }
-
-    float *pColorData( NULL );
-
-    if( m_dh->m_useVBO )
-    {
-        glBindBuffer( GL_ARRAY_BUFFER, m_bufferObjects[1] );
-        pColorData = ( float * ) glMapBuffer( GL_ARRAY_BUFFER, GL_READ_WRITE );
+		glBindBuffer( GL_ARRAY_BUFFER, m_bufferObjects[1] );
+		pColorData = ( float * ) glMapBuffer( GL_ARRAY_BUFFER, GL_READ_WRITE );
     }
     else
     {
@@ -1983,127 +2022,32 @@ void Fibers::save( wxString filename )
                 linesToSave.push_back( pointIndex );
                 ++pointIndex;
             }
-
             ++countLines;
         }
     }
 
-    if( m_dh->m_useVBO )
+    if( m_dh->m_useVBO)
     {
         glUnmapBuffer( GL_ARRAY_BUFFER );
     }
-
-    converterByteINT32 c;
-    converterByteFloat f;
-    ofstream myfile;
-    vector< char > vBuffer;
-    
-    string header1 = "# vtk DataFile Version 3.0\nvtk output\nBINARY\nDATASET POLYDATA\nPOINTS ";
-    header1 += intToString( pointsToSave.size() / 3 );
-    header1 += " float\n";
-
-    for( unsigned int i = 0; i < header1.size(); ++i )
-    {
-        vBuffer.push_back( header1[i] );
-    }
-
-    for( unsigned int i = 0; i < pointsToSave.size(); ++i )
-    {
-        f.f = pointsToSave[i];
-        vBuffer.push_back( f.b[3] );
-        vBuffer.push_back( f.b[2] );
-        vBuffer.push_back( f.b[1] );
-        vBuffer.push_back( f.b[0] );
-    }
-
-    vBuffer.push_back( '\n' );
-    string header2 = "LINES " + intToString( countLines ) + " " + intToString( linesToSave.size() ) + "\n";
-
-    for( unsigned int i = 0; i < header2.size(); ++i )
-    {
-        vBuffer.push_back( header2[i] );
-    }
-
-    for( unsigned int i = 0; i < linesToSave.size(); ++i )
-    {
-        c.i = linesToSave[i];
-        vBuffer.push_back( c.b[3] );
-        vBuffer.push_back( c.b[2] );
-        vBuffer.push_back( c.b[1] );
-        vBuffer.push_back( c.b[0] );
-    }
-
-    vBuffer.push_back( '\n' );
-    string header3 = "POINT_DATA ";
-    header3 += intToString( pointsToSave.size() / 3 );
-    header3 += " float\n";
-    header3 += "COLOR_SCALARS scalars 3\n";
-
-    for( unsigned int i = 0; i < header3.size(); ++i )
-    {
-        vBuffer.push_back( header3[i] );
-    }
-
-    for( unsigned int i = 0; i < colorsToSave.size(); ++i )
-    {
-        vBuffer.push_back( colorsToSave[i] );
-    }
-
-    vBuffer.push_back( '\n' );
-    
-    // Finally put the buffer vector into a char* array.
-    char *pBuffer;
-    pBuffer = new char[vBuffer.size()];
-
-    for( unsigned int i = 0; i < vBuffer.size(); ++i )
-    {
-        pBuffer[i] = vBuffer[i];
-    }
-
-    char *pFn;
-    pFn = ( char * ) malloc( filename.length() );
-    strcpy( pFn, ( const char * ) filename.mb_str( wxConvUTF8 ) );
-    myfile.open( pFn, ios::binary );
-    myfile.write( pBuffer, vBuffer.size() );
-    myfile.close();
-    
-    delete[] pBuffer;
-    pBuffer = NULL;
-    
-    free(pFn);
-    pFn = NULL;
 }
 
-void Fibers::saveDMRI( wxString filename )
+void Fibers::getNbLines( int& nbLines )
 {
-    int countLines = 0;
-
-    if( filename.AfterLast( '.' ) != _T( "fib" ) )
-    {
-        filename += _T( ".fib" );
-    }
-
-    int nbrlines = 0;
+	nbLines = 0;
 
     for( int l = 0; l < m_countLines; ++l )
     {
         if( m_selected[l] && !m_filtered[l] )
         {
-            nbrlines++;
+            nbLines++;
         }
     }
+}
 
-    ofstream myfile;
-    char *pFn;
-    pFn = ( char * ) malloc( filename.length() );
-    strcpy( pFn, ( const char * ) filename.mb_str( wxConvUTF8 ) );
-    myfile.open( pFn, ios::out );
-    
-    float dist = 0.5;
-    myfile << "1 FA\n4 min max mean var\n1\n4 0 0 0 0\n4 0 0 0 0\n4 0 0 0 0\n";
-    myfile << nbrlines << " " << dist << "\n";
-
-    for( int l = 0; l < m_countLines; ++l )
+void Fibers::loadDMRIFibersInFile( ofstream& myfile )
+{
+	for( int l = 0; l < m_countLines; ++l )
     {
         if( m_selected[l] && !m_filtered[l] )
         {
@@ -2118,14 +2062,120 @@ void Fibers::saveDMRI( wxString filename )
 
             pc = getStartIndexForLine( l ) * 3;
             myfile <<  m_pointArray[pc] << " " <<  m_pointArray[pc + 1] << " " <<  m_pointArray[pc + 2] << " 0\n";
-            ++countLines;
         }
     }
+}
 
+/**
+ * Save using the VTK binary format.
+ */
+void Fibers::save( wxString filename )
+{
+	ofstream myfile;
+    char *pFn;
+	vector<char> vBuffer;
+	converterByteINT32 c;
+    converterByteFloat f;
+	vector<float> pointsToSave;
+	vector<int> linesToSave;
+	vector<int> colorsToSave;
+	int countLines = 0;
+
+	if( filename.AfterLast( '.' ) != _T( "fib" ) )
+    {
+        filename += _T( ".fib" );
+    }
+
+    pFn = ( char * ) malloc( filename.length() );
+    strcpy( pFn, ( const char * ) filename.mb_str( wxConvUTF8 ) );
+    myfile.open( pFn, ios::binary );
+
+	getFibersInfoToSave( pointsToSave, linesToSave, colorsToSave, countLines );
+
+	string header1 = "# vtk DataFile Version 3.0\nvtk output\nBINARY\nDATASET POLYDATA\nPOINTS ";
+	header1 += intToString( pointsToSave.size() / 3 );
+	header1 += " float\n";
+	for( unsigned int i = 0; i < header1.size(); ++i )
+	{
+		vBuffer.push_back( header1[i] );
+	}
+	for( unsigned int i = 0; i < pointsToSave.size(); ++i )
+	{
+		f.f = pointsToSave[i];
+		vBuffer.push_back( f.b[3] );
+		vBuffer.push_back( f.b[2] );
+		vBuffer.push_back( f.b[1] );
+		vBuffer.push_back( f.b[0] );
+	}
+	
+	vBuffer.push_back( '\n' );
+	string header2 = "LINES " + intToString( countLines ) + " " + intToString( linesToSave.size() ) + "\n";
+    for( unsigned int i = 0; i < header2.size(); ++i )
+    {
+        vBuffer.push_back( header2[i] );
+    }
+	for( unsigned int i = 0; i < linesToSave.size(); ++i )
+	{
+		c.i = linesToSave[i];
+		vBuffer.push_back( c.b[3] );
+		vBuffer.push_back( c.b[2] );
+		vBuffer.push_back( c.b[1] );
+		vBuffer.push_back( c.b[0] );
+	}
+    
+	vBuffer.push_back( '\n' );
+    string header3 = "POINT_DATA ";
+    header3 += intToString( pointsToSave.size() / 3 );
+    header3 += " float\n";
+    header3 += "COLOR_SCALARS scalars 3\n";
+    for( unsigned int i = 0; i < header3.size(); ++i )
+    {
+        vBuffer.push_back( header3[i] );
+    }
+	for( unsigned int i = 0; i < colorsToSave.size(); ++i )
+	{
+		vBuffer.push_back( colorsToSave[i] );
+	}
+	vBuffer.push_back( '\n' );
+
+	// Put the buffer vector into a char* array.
+    char* pBuffer = new char[vBuffer.size()];
+
+    for( unsigned int i = 0; i < vBuffer.size(); ++i )
+    {
+        pBuffer[i] = vBuffer[i];
+    }
+	
+	myfile.write( pBuffer, vBuffer.size() );
     myfile.close();
     
-    free(pFn);
-    pFn = NULL;
+    delete[] pBuffer;
+    pBuffer = NULL;
+}
+
+void Fibers::saveDMRI( wxString filename )
+{
+    ofstream myfile;
+	int nbrlines;
+    char *pFn;
+	float dist = 0.5;
+
+	if( filename.AfterLast( '.' ) != _T( "fib" ) )
+    {
+        filename += _T( ".fib" );
+    }
+
+    pFn = ( char * ) malloc( filename.length() );
+    strcpy( pFn, ( const char * ) filename.mb_str( wxConvUTF8 ) );
+    myfile.open( pFn, ios::out );
+   
+	getNbLines( nbrlines );
+
+	myfile << "1 FA\n4 min max mean var\n1\n4 0 0 0 0\n4 0 0 0 0\n4 0 0 0 0\n";
+	myfile << nbrlines << " " << dist << "\n";
+	loadDMRIFibersInFile( myfile);
+
+    myfile.close();
 }
 
 string Fibers::intToString( const int number )
@@ -2137,7 +2187,7 @@ string Fibers::intToString( const int number )
 
 void Fibers::toggleEndianess()
 {
-    m_dh->printDebug( _T( "toggle Endianess" ), 1 );
+    Logger::getInstance()->print( wxT( "Toggle Endianess" ), LOGLEVEL_MESSAGE );
     wxUint8 temp = 0;
     wxUint8 *pPointBytes = ( wxUint8 * )&m_pointArray[0];
 
@@ -2182,7 +2232,7 @@ int Fibers::getLineForPoint( const int pointIdx )
 
 void Fibers::calculateLinePointers()
 {
-    m_dh->printDebug( _T( "calculate line pointers" ), 1 );
+    Logger::getInstance()->print( wxT( "Calculate line pointers" ), LOGLEVEL_MESSAGE );
     int pc = 0;
     int lc = 0;
     int tc = 0;
@@ -2211,7 +2261,7 @@ void Fibers::calculateLinePointers()
 
 void Fibers::createColorArray( const bool colorsLoadedFromFile )
 {
-    m_dh->printDebug( _T( "create color arrays" ), 1 );
+    Logger::getInstance()->print( wxT( "Create color arrays" ), LOGLEVEL_MESSAGE );
 
     if( !colorsLoadedFromFile )
     {
@@ -2309,15 +2359,15 @@ void Fibers::createColorArray( const bool colorsLoadedFromFile )
 
 void Fibers::resetColorArray()
 {
-    m_dh->printDebug( _T( "reset color arrays" ), 1 );
-    float *pColorData =  NULL;
-    float *pColorData2 = NULL;
-
-    if( m_dh->m_useVBO )
+    Logger::getInstance()->print( wxT( "Reset color arrays" ), LOGLEVEL_MESSAGE );
+    float *pColorData( NULL );
+    float *pColorData2( NULL );
+	
+	if( m_dh->m_useVBO )
     {
-        glBindBuffer( GL_ARRAY_BUFFER, m_bufferObjects[1] );
-        pColorData  = ( float * ) glMapBuffer( GL_ARRAY_BUFFER, GL_READ_WRITE );
-        pColorData2 = &m_colorArray[0];
+		glBindBuffer( GL_ARRAY_BUFFER, m_bufferObjects[1] );
+		pColorData = ( float * ) glMapBuffer( GL_ARRAY_BUFFER, GL_READ_WRITE );
+		pColorData2 = &m_colorArray[0];
     }
     else
     {
@@ -2376,12 +2426,12 @@ void Fibers::resetColorArray()
         }
     }
 
-    if( m_dh->m_useVBO )
+    if( m_dh->m_useVBO)
     {
         glUnmapBuffer( GL_ARRAY_BUFFER );
     }
 
-    m_dh->m_fiberColorationMode = NORMAL_COLOR;
+    m_fiberColorationMode = NORMAL_COLOR;
 }
 
 
@@ -2395,11 +2445,7 @@ void Fibers::updateLinesShown()
     //vector< vector< SelectionObject * > > selectionObjects = m_dh->getSelectionObjects();
     SelectionTree::SelectionObjectVector selectionObjects = m_dh->m_pSelectionTree->getAllObjects();
 
-    // TODO replace with assign.
-    for( int i = 0; i < m_countLines; ++i )
-    {
-        m_selected[i] = 1;
-    }
+    m_selected.assign( m_countLines, true );
 
     //int activeCount = 0;
 
@@ -2439,7 +2485,9 @@ void Fibers::updateLinesShown()
     {
         if( selectionObjects[i][0]->getIsActive() )
         {
-            if( selectionObjects[i][0]->getIsDirty() )
+            // NOTE: this is currently commented while waiting for JF's
+            // refactoring and JC's selection branch.
+            //if( selectionObjects[i][0]->getIsDirty() )
             {
                 selectionObjects[i][0]->m_inBox.clear();
                 selectionObjects[i][0]->m_inBox.resize( m_countLines );
@@ -2448,7 +2496,6 @@ void Fibers::updateLinesShown()
 
                 // Sets the fibers that are inside this object to true in the m_inBox vector.
                 selectionObjects[i][0]->m_inBox = getLinesShown( selectionObjects[i][0] );
-                selectionObjects[i][0]->setIsDirty( false );
             }
 
             selectionObjects[i][0]->m_inBranch = selectionObjects[i][0]->m_inBox;
@@ -2458,14 +2505,15 @@ void Fibers::updateLinesShown()
             {
                 if( selectionObjects[i][j]->getIsActive() )
                 {
-                    if( selectionObjects[i][j]->getIsDirty() )
+                    // NOTE: this is currently commented while waiting for JF's
+                    // refactoring and JC's selection branch.                  
+                    //if( selectionObjects[i][j]->getIsDirty() )
                     {
                         selectionObjects[i][j]->m_inBox.clear();
                         selectionObjects[i][j]->m_inBox.resize( m_countLines );
                         
                         // Sets the fibers that are inside this object to true in the m_inBox vector.
                         selectionObjects[i][j]->m_inBox = getLinesShown( selectionObjects[i][j] );
-                        selectionObjects[i][j]->setIsDirty( false );
                     }
 
                     // Sets the fibers that are INSIDE this child object and INSIDE its master to be in branch.
@@ -2489,15 +2537,15 @@ void Fibers::updateLinesShown()
 
         if( selectionObjects[i].size() > 0 && selectionObjects[i][0]->isColorChanged() )
         {
-            float *pColorData  = NULL;
-            float *pColorData2 = NULL;
-
-            if( m_dh->m_useVBO )
-            {
-                glBindBuffer( GL_ARRAY_BUFFER, m_bufferObjects[1] );
-                pColorData  = ( float * ) glMapBuffer( GL_ARRAY_BUFFER, GL_READ_WRITE );
-                pColorData2 = &m_colorArray[0];
-            }
+			float *pColorData( NULL );
+			float *pColorData2( NULL );
+			
+			if( m_dh->m_useVBO )
+			{
+				glBindBuffer( GL_ARRAY_BUFFER, m_bufferObjects[1] );
+				pColorData = ( float * ) glMapBuffer( GL_ARRAY_BUFFER, GL_READ_WRITE );
+				pColorData2 = &m_colorArray[0];
+			}
             else
             {
                 pColorData  = &m_colorArray[0];
@@ -2551,7 +2599,7 @@ void Fibers::updateLinesShown()
     }*/
     m_selected = m_dh->m_pSelectionTree->getSelectedFibers( this );
 
-    if( m_dh->m_fibersInverted )
+    if( m_fibersInverted )
     {
         for( int k = 0; k < m_countLines; ++k )
         {
@@ -2564,7 +2612,7 @@ void Fibers::updateLinesShown()
     {
         m_dh->m_lastSelectedObject->SetFiberInfoGridValues();
         m_dh->m_lastSelectedObject->computeMeanFiber();
-
+        m_dh->m_lastSelectedObject->computeConvexHull();
     }*/
 }
 
@@ -2747,22 +2795,14 @@ void Fibers::initializeBuffer()
     glBindBuffer( GL_ARRAY_BUFFER, m_bufferObjects[0] );
     glBufferData( GL_ARRAY_BUFFER, sizeof( GLfloat ) * m_countPoints * 3, &m_pointArray[0], GL_STATIC_DRAW );
 
-    if( m_dh->GLError() )
-    {
-        m_dh->printGLError( wxT( "initialize vbo points" ) );
-        isOK = false;
-    }
-
+    isOK = !Logger::getInstance()->printIfGLError( wxT( "initialize vbo points" ) );
+    
     if( isOK )
     {
         glBindBuffer( GL_ARRAY_BUFFER, m_bufferObjects[1] );
         glBufferData( GL_ARRAY_BUFFER, sizeof( GLfloat ) * m_countPoints * 3, &m_colorArray[0], GL_STATIC_DRAW );
 
-        if( m_dh->GLError() )
-        {
-            m_dh->printGLError( wxT( "initialize vbo colors" ) );
-            isOK = false;
-        }
+        isOK = !Logger::getInstance()->printIfGLError( wxT( "initialize vbo colors" ) );
     }
 
     if( isOK )
@@ -2770,11 +2810,7 @@ void Fibers::initializeBuffer()
         glBindBuffer( GL_ARRAY_BUFFER, m_bufferObjects[2] );
         glBufferData( GL_ARRAY_BUFFER, sizeof( GLfloat ) * m_countPoints * 3, &m_normalArray[0], GL_STATIC_DRAW );
 
-        if( m_dh->GLError() )
-        {
-            m_dh->printGLError( wxT( "initialize vbo normals" ) );
-            isOK = false;
-        }
+        isOK = !Logger::getInstance()->printIfGLError( wxT( "initialize vbo normals" ) );
     }
 
     m_dh->m_useVBO = isOK;
@@ -2785,15 +2821,17 @@ void Fibers::initializeBuffer()
     }
     else
     {
-        m_dh->printDebug( _T( "Not enough memory on your gfx card. Using vertex arrays." ),            2 );
-        m_dh->printDebug( _T( "This shouldn't concern you. Perfomance just will be slightly worse." ), 2 );
-        m_dh->printDebug( _T( "Get a better graphics card if you want more juice." ),                  2 );
+        Logger::getInstance()->print( wxT( "Not enough memory on your gfx card. Using vertex arrays." ),            LOGLEVEL_ERROR );
+        Logger::getInstance()->print( wxT( "This shouldn't concern you. Perfomance just will be slightly worse." ), LOGLEVEL_ERROR );
+        Logger::getInstance()->print( wxT( "Get a better graphics card if you want more juice." ),                  LOGLEVEL_ERROR );
         glDeleteBuffers( 3, m_bufferObjects );
     }
 }
 
 void Fibers::draw()
 {
+    setShader();
+
     if( m_cachedThreshold != m_threshold )
     {
         updateFibersColors();
@@ -2802,13 +2840,13 @@ void Fibers::draw()
 
     initializeBuffer();
 
-    if( m_dh->m_useFakeTubes )
+    if( m_useFakeTubes )
     {
         drawFakeTubes();
         return;
     }
 
-    if( m_dh->m_useTransparency )
+    if( m_useTransparency )
     {
         glPushAttrib( GL_ALL_ATTRIB_BITS );
         glEnable( GL_BLEND );
@@ -2816,6 +2854,14 @@ void Fibers::draw()
         glDepthMask( GL_FALSE );
         drawSortedLines();
         glPopAttrib();
+        return;
+    }
+
+    // If geometry shaders are supported, the shader will take care of the filtering
+    // Otherwise, use the drawCrossingFibers
+    if ( !m_dh->m_useFibersGeometryShader && m_useCrossingFibers )
+    {
+        drawCrossingFibers();
         return;
     }
 
@@ -2869,6 +2915,8 @@ void Fibers::draw()
     glDisableClientState( GL_VERTEX_ARRAY );
     glDisableClientState( GL_COLOR_ARRAY );
     glDisableClientState( GL_NORMAL_ARRAY );
+
+    releaseShader();
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2917,25 +2965,53 @@ void Fibers::drawFakeTubes()
         glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
     }
 
-    for( int i = 0; i < m_countLines; ++i )
+    if ( m_useCrossingFibers )
     {
-        if( m_selected[i] && !m_filtered[i] )
+        findCrossingFibers();
+
+        for( unsigned int i = 0; i < m_cfStartOfLine.size(); ++i )
         {
-            int idx = getStartIndexForLine( i ) * 3;
-            glBegin( GL_QUAD_STRIP );
-
-            for( int k = 0; k < getPointsPerLine( i ); ++k )
+            if ( 3 < m_cfPointsPerLine[i] )
             {
-                glNormal3f( pNormals[idx], pNormals[idx + 1], pNormals[idx + 2] );
-                glColor3f( pColors[idx],  pColors[idx + 1],  pColors[idx + 2] );
-                glTexCoord2f( -1.0f, 0.0f );
-                glVertex3f( m_pointArray[idx], m_pointArray[idx + 1], m_pointArray[idx + 2] );
-                glTexCoord2f( 1.0f, 0.0f );
-                glVertex3f( m_pointArray[idx], m_pointArray[idx + 1], m_pointArray[idx + 2] );
-                idx += 3;
-            }
+                int index = m_cfStartOfLine[i] * 3;
+                glBegin( GL_QUAD_STRIP );
 
-            glEnd();
+                for( unsigned int k = 0; k < m_cfPointsPerLine[i]; ++k, index += 3 )
+                {
+                    glNormal3f( m_normalArray[index], m_normalArray[index + 1], m_normalArray[index + 2] );
+                    glColor3f( m_colorArray[index],  m_colorArray[index + 1],  m_colorArray[index + 2] );
+                    glTexCoord2f( -1.0f, 0.0f );
+                    glVertex3f( m_pointArray[index], m_pointArray[index + 1], m_pointArray[index + 2] );
+                    glTexCoord2f( 1.0f, 0.0f );
+                    glVertex3f( m_pointArray[index], m_pointArray[index + 1], m_pointArray[index + 2] );
+                }
+
+                glEnd();
+            }
+        }
+    }
+    else
+    {
+        for( int i = 0; i < m_countLines; ++i )
+        {
+            if( m_selected[i] && !m_filtered[i] )
+            {
+                int idx = getStartIndexForLine( i ) * 3;
+                glBegin( GL_QUAD_STRIP );
+
+                for( int k = 0; k < getPointsPerLine( i ); ++k )
+                {
+                    glNormal3f( pNormals[idx], pNormals[idx + 1], pNormals[idx + 2] );
+                    glColor3f( pColors[idx],  pColors[idx + 1],  pColors[idx + 2] );
+                    glTexCoord2f( -1.0f, 0.0f );
+                    glVertex3f( m_pointArray[idx], m_pointArray[idx + 1], m_pointArray[idx + 2] );
+                    glTexCoord2f( 1.0f, 0.0f );
+                    glVertex3f( m_pointArray[idx], m_pointArray[idx + 1], m_pointArray[idx + 2] );
+                    idx += 3;
+                }
+
+                glEnd();
+            }
         }
     }
 }
@@ -3028,7 +3104,7 @@ void Fibers::drawSortedLines()
     glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
     glBegin( GL_LINES );
 
-    if( m_dh->m_fiberColorationMode == MINDISTANCE_COLOR )
+    if( m_fiberColorationMode == MINDISTANCE_COLOR )
     {
         int i = 0;
 
@@ -3073,6 +3149,73 @@ void Fibers::drawSortedLines()
     // FIXME: store these later on!
     delete[] pSnippletSort;
     delete[] pLineIds;
+}
+
+void Fibers::useFakeTubes()
+{
+	m_useFakeTubes = ! m_useFakeTubes;
+	switchNormals( m_useFakeTubes );
+}
+
+void Fibers::useTransparency()
+{
+	m_useTransparency = ! m_useTransparency;
+}
+
+void Fibers::drawCrossingFibers()
+{
+    findCrossingFibers();
+
+    glEnableClientState( GL_VERTEX_ARRAY );
+    glEnableClientState( GL_COLOR_ARRAY );
+    glEnableClientState( GL_NORMAL_ARRAY );
+
+    if( ! m_dh->m_useVBO )
+    {
+        glVertexPointer( 3, GL_FLOAT, 0, &m_pointArray[0] );
+
+        if( m_showFS )
+        {
+            glColorPointer( 3, GL_FLOAT, 0, &m_colorArray[0] );  // Global colors.
+        }
+        else
+        {
+            glColorPointer( 3, GL_FLOAT, 0, &m_normalArray[0] ); // Local colors.
+        }
+
+        glNormalPointer( GL_FLOAT, 0, &m_normalArray[0] );
+    }
+    else
+    {
+        glBindBuffer( GL_ARRAY_BUFFER, m_bufferObjects[0] );
+        glVertexPointer( 3, GL_FLOAT, 0, 0 );
+
+        if( m_showFS )
+        {
+            glBindBuffer( GL_ARRAY_BUFFER, m_bufferObjects[1] );
+            glColorPointer( 3, GL_FLOAT, 0, 0 );
+        }
+        else
+        {
+            glBindBuffer( GL_ARRAY_BUFFER, m_bufferObjects[2] );
+            glColorPointer( 3, GL_FLOAT, 0, 0 );
+        }
+
+        glBindBuffer( GL_ARRAY_BUFFER, m_bufferObjects[2] );
+        glNormalPointer( GL_FLOAT, 0, 0 );
+    }
+
+    for( unsigned int i = 0; i < m_cfStartOfLine.size(); ++i )
+    {
+        if ( 1 < m_cfPointsPerLine[i] )
+        {
+            glDrawArrays( GL_LINE_STRIP, m_cfStartOfLine[i], m_cfPointsPerLine[i] );
+        }
+    }
+
+    glDisableClientState( GL_VERTEX_ARRAY );
+    glDisableClientState( GL_COLOR_ARRAY );
+    glDisableClientState( GL_NORMAL_ARRAY );
 }
 
 void Fibers::switchNormals( bool positive )
@@ -3185,6 +3328,11 @@ bool Fibers::isSelected( int fiberId )
     return m_selected[fiberId];
 }
 
+float Fibers::getLocalizedAlpha( int index )
+{
+	return m_localizedAlpha[index];
+}
+
 void Fibers::setFibersLength()
 {
     m_length.resize( m_countLines, false );
@@ -3229,22 +3377,14 @@ void Fibers::setFibersLength()
 
 bool Fibers::getFiberCoordValues( int fiberIndex, vector< Vector > &fiberPoints )
 {
-    Fibers *pFibers = NULL;
-    m_dh->getFiberDataset( pFibers );
-
-    if( pFibers == NULL || fiberIndex < 0 )
-    {
-        return false;
-    }
-
-    int index = pFibers->getStartIndexForLine( fiberIndex ) * 3;
+    int index = getStartIndexForLine( fiberIndex ) * 3;
     Vector point3D;
 
-    for( int i = 0; i < pFibers->getPointsPerLine( fiberIndex ); ++i )
+    for( int i = 0; i < getPointsPerLine( fiberIndex ); ++i )
     {
-        point3D.x = pFibers->getPointValue( index );
-        point3D.y = pFibers->getPointValue( index + 1 );
-        point3D.z = pFibers->getPointValue( index + 2 );
+        point3D.x = getPointValue( index );
+        point3D.y = getPointValue( index + 1 );
+        point3D.z = getPointValue( index + 2 );
         fiberPoints.push_back( point3D );
         index += 3;
     }
@@ -3254,23 +3394,31 @@ bool Fibers::getFiberCoordValues( int fiberIndex, vector< Vector > &fiberPoints 
 
 void Fibers::updateFibersFilters()
 {
+    m_cfDrawDirty = true;
     int min = m_pSliderFibersFilterMin->GetValue();
     int max = m_pSliderFibersFilterMax->GetValue();
     int subSampling = m_pSliderFibersSampling->GetValue();
     int maxSubSampling = m_pSliderFibersSampling->GetMax() + 1;
 
-    for( int i = 0; i < m_countLines; ++i )
+	updateFibersFilters(min, max, subSampling, maxSubSampling);
+}
+
+void Fibers::updateFibersFilters(int minLength, int maxLength, int minSubsampling, int maxSubsampling)
+{
+	for( int i = 0; i < m_countLines; ++i )
     {
-        m_filtered[i] = !( ( i % maxSubSampling ) >= subSampling && m_length[i] >= min && m_length[i] <= max );
+        m_filtered[i] = !( ( i % maxSubsampling ) >= minSubsampling && m_length[i] >= minLength && m_length[i] <= maxLength );
     }
     
-    // Update stats and mean fiber
-    // TODO do this only when displaying the fibers stats
+    //Update stats, mean fiber and convexhull only if an object is selected.
+    // TODO do this only when displaying the fiber stats
     if( m_dh->m_lastSelectedObject != NULL )
     {
         m_dh->m_lastSelectedObject->SetFiberInfoGridValues();
         m_dh->m_lastSelectedObject->computeMeanFiber();
+        m_dh->m_lastSelectedObject->computeConvexHull();
     }
+
 }
 
 vector< bool > Fibers::getFilteredFibers()
@@ -3297,7 +3445,7 @@ void Fibers::flipAxis( AxisType i_axe )
             m_pOctree->flipZ();
             break;
         default:
-            m_dh->printDebug( _T("Cannot flip fibers. The specified axis is undefined"), 2 );
+            Logger::getInstance()->print( wxT( "Cannot flip fibers. The specified axis is undefined" ), LOGLEVEL_ERROR );
             return; //No axis specified - Cannot flip
     }
 
@@ -3351,52 +3499,65 @@ void Fibers::createPropertiesSizer( PropertiesWindow *pParent )
     pSizer->Add( m_pSliderFibersSampling, 0, wxALIGN_CENTER );
     m_propertiesSizer->Add( pSizer, 0, wxALIGN_CENTER );
     pParent->Connect( m_pSliderFibersSampling->GetId(), wxEVT_COMMAND_SLIDER_UPDATED, wxCommandEventHandler( PropertiesWindow::OnFibersFilter ) );
+
+    pSizer = new wxBoxSizer( wxHORIZONTAL );
+    pSizer->Add( new wxStaticText( pParent, wxID_ANY , wxT( "Thickness" ), wxDefaultPosition, wxSize( 60, -1 ), wxALIGN_CENTRE ), 0, wxALIGN_CENTER );
+    m_pSliderCrossingFibersThickness = new wxSlider( pParent, wxID_ANY, m_thickness * 4, 1, 20, wxDefaultPosition, wxSize( 140, -1 ), wxSL_HORIZONTAL | wxSL_AUTOTICKS );
+    pSizer->Add( m_pSliderCrossingFibersThickness, 0, wxALIGN_CENTER );
+    m_propertiesSizer->Add( pSizer, 0, wxALIGN_CENTER );
+    pParent->Connect( m_pSliderCrossingFibersThickness->GetId(), wxEVT_COMMAND_SLIDER_UPDATED, wxCommandEventHandler( PropertiesWindow::OnCrossingFibersThicknessChange ) );
     
     pSizer = new wxBoxSizer( wxHORIZONTAL );
-    m_pGeneratesFibersDensityVolume = new wxButton( pParent, wxID_ANY, wxT( "New Density Volume" ), wxDefaultPosition, wxSize( 140, -1 ) );
+    m_pGeneratesFibersDensityVolume = new wxButton( pParent, wxID_ANY, wxT( "New Density Volume" ), wxDefaultPosition, wxSize( 145, -1 ) );
     pSizer->Add( m_pGeneratesFibersDensityVolume, 0, wxALIGN_CENTER );
     m_propertiesSizer->Add( pSizer, 0, wxALIGN_CENTER );
     pParent->Connect( m_pGeneratesFibersDensityVolume->GetId(), wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PropertiesWindow::OnGenerateFiberVolume ) );
     
     pSizer = new wxBoxSizer( wxHORIZONTAL );
-    m_pToggleLocalColoring = new wxToggleButton( pParent, wxID_ANY, wxT( "Local Coloring" ), wxDefaultPosition, wxSize( 140, -1 ) );
+    m_pToggleLocalColoring = new wxToggleButton( pParent, wxID_ANY, wxT( "Local Coloring" ), wxDefaultPosition, wxSize( 145, -1 ) );
     pSizer->Add( m_pToggleLocalColoring, 0, wxALIGN_CENTER );
     m_propertiesSizer->Add( pSizer, 0, wxALIGN_CENTER );
     pParent->Connect( m_pToggleLocalColoring->GetId(), wxEVT_COMMAND_TOGGLEBUTTON_CLICKED, wxCommandEventHandler( PropertiesWindow::OnListMenuThreshold ) );
     
     pSizer = new wxBoxSizer( wxHORIZONTAL );
-    m_pToggleNormalColoring = new wxToggleButton( pParent, wxID_ANY, wxT( "Color With Overley" ), wxDefaultPosition, wxSize( 140, -1 ) );
+    m_pToggleNormalColoring = new wxToggleButton( pParent, wxID_ANY, wxT( "Color With Overlay" ), wxDefaultPosition, wxSize( 145, -1 ) );
     pSizer->Add( m_pToggleNormalColoring, 0, wxALIGN_CENTER );
     m_propertiesSizer->Add( pSizer, 0, wxALIGN_CENTER );
     pParent->Connect( m_pToggleNormalColoring->GetId(), wxEVT_COMMAND_TOGGLEBUTTON_CLICKED, wxEventHandler( PropertiesWindow::OnToggleShowFS ) );
-    
+
+    pSizer = new wxBoxSizer( wxHORIZONTAL );
+    m_pToggleCrossingFibers = new wxToggleButton( pParent, wxID_ANY, wxT( "Intersected Fibers" ), wxDefaultPosition, wxSize( 140, -1 ) );
+    pSizer->Add( m_pToggleCrossingFibers, 0, wxALIGN_CENTER );
+    m_propertiesSizer->Add( pSizer, 0, wxALIGN_CENTER );
+    pParent->Connect( m_pToggleCrossingFibers->GetId(), wxEVT_COMMAND_TOGGLEBUTTON_CLICKED, wxEventHandler( PropertiesWindow::OnToggleCrossingFibers ) );
+
     m_propertiesSizer->AddSpacer( 8 );
     
     pSizer = new wxBoxSizer( wxHORIZONTAL );
     pSizer->Add( new wxStaticText( pParent, wxID_ANY, _T( "Coloring" ), wxDefaultPosition, wxSize( 60, -1 ), wxALIGN_RIGHT ), 0, wxALIGN_CENTER );
     pSizer->Add( 8, 1, 0 );
-    m_pRadioNormalColoring = new wxRadioButton( pParent, wxID_ANY, _T( "Normal" ), wxDefaultPosition, wxSize( 132, -1 ) );
+    m_pRadioNormalColoring = new wxRadioButton( pParent, wxID_ANY, _T( "Normal" ), wxDefaultPosition, wxSize( 145, -1 ) );
     pSizer->Add( m_pRadioNormalColoring );
     m_propertiesSizer->Add( pSizer, 0, wxALIGN_CENTER );
-    m_pRadioDistanceAnchoring  = new wxRadioButton( pParent, wxID_ANY, _T( "Dist. Anchoring" ), wxDefaultPosition, wxSize( 132, -1 ) );
+    m_pRadioDistanceAnchoring  = new wxRadioButton( pParent, wxID_ANY, _T( "Dist. Anchoring" ), wxDefaultPosition, wxSize( 145, -1 ) );
     
     pSizer = new wxBoxSizer( wxHORIZONTAL );
     pSizer->Add( 68, 1, 0 );
     pSizer->Add( m_pRadioDistanceAnchoring );
     m_propertiesSizer->Add( pSizer, 0, wxALIGN_CENTER );
-    m_pRadioMinDistanceAnchoring  = new wxRadioButton( pParent, wxID_ANY, _T( "Min Dist. Anchoring" ), wxDefaultPosition, wxSize( 132, -1 ) );
+    m_pRadioMinDistanceAnchoring  = new wxRadioButton( pParent, wxID_ANY, _T( "Min Dist. Anchoring" ), wxDefaultPosition, wxSize( 145, -1 ) );
     
     pSizer = new wxBoxSizer( wxHORIZONTAL );
     pSizer->Add( 68, 1, 0 );
     pSizer->Add( m_pRadioMinDistanceAnchoring );
     m_propertiesSizer->Add( pSizer, 0, wxALIGN_CENTER );
-    m_pRadioCurvature  = new wxRadioButton( pParent, wxID_ANY, _T( "Curvature" ), wxDefaultPosition, wxSize( 132, -1 ) );
+    m_pRadioCurvature  = new wxRadioButton( pParent, wxID_ANY, _T( "Curvature" ), wxDefaultPosition, wxSize( 145, -1 ) );
     
     pSizer = new wxBoxSizer( wxHORIZONTAL );
     pSizer->Add( 68, 1, 0 );
     pSizer->Add( m_pRadioCurvature );
     m_propertiesSizer->Add( pSizer, 0, wxALIGN_CENTER );
-    m_pRadioTorsion  = new wxRadioButton( pParent, wxID_ANY, _T( "Torsion" ), wxDefaultPosition, wxSize( 132, -1 ) );
+    m_pRadioTorsion  = new wxRadioButton( pParent, wxID_ANY, _T( "Torsion" ), wxDefaultPosition, wxSize( 145, -1 ) );
     
     pSizer = new wxBoxSizer( wxHORIZONTAL );
     pSizer->Add( 68, 1, 0 );
@@ -3407,7 +3568,7 @@ void Fibers::createPropertiesSizer( PropertiesWindow *pParent )
     pParent->Connect( m_pRadioMinDistanceAnchoring->GetId(), wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PropertiesWindow::OnListMenuMinDistance ) );
     pParent->Connect( m_pRadioTorsion->GetId(), wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PropertiesWindow::OnColorWithTorsion ) );
     pParent->Connect( m_pRadioCurvature->GetId(), wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PropertiesWindow::OnColorWithCurvature ) );
-    m_pRadioNormalColoring->SetValue( m_dh->m_fiberColorationMode == NORMAL_COLOR );
+    m_pRadioNormalColoring->SetValue( true );
 }
 
 void Fibers::updatePropertiesSizer()
@@ -3415,12 +3576,264 @@ void Fibers::updatePropertiesSizer()
     DatasetInfo::updatePropertiesSizer();
     m_ptoggleFiltering->Enable( false );
     m_ptoggleFiltering->SetValue( false );
+    m_pToggleCrossingFibers->Enable( true );
+	m_pToggleCrossingFibers->SetValue( m_useCrossingFibers );
     m_psliderOpacity->SetValue( m_psliderOpacity->GetMin() );
     m_psliderOpacity->Enable( false );
+    m_pSliderCrossingFibersThickness->Enable( m_useCrossingFibers );
     m_pToggleNormalColoring->SetValue( !getShowFS() );
     m_pRadioNormalColoring->Enable( getShowFS() );
     m_pRadioCurvature->Enable( getShowFS() );
     m_pRadioDistanceAnchoring->Enable( getShowFS() );
     m_pRadioMinDistanceAnchoring->Enable( getShowFS() );
     m_pRadioTorsion->Enable( getShowFS() );
+	m_psliderThresholdIntensity->SetValue( getThreshold()*100 );
+	m_psliderOpacity->SetValue( getAlpha()*100 );
+
+	// Hide temporarily opacity functionality
+	m_psliderOpacity->Hide();
+	m_pOpacityText->Hide();
+	
+	if(m_isColorationUpdated)
+	{
+		m_pRadioNormalColoring->SetValue( m_fiberColorationMode == NORMAL_COLOR );
+		m_pRadioCurvature->SetValue( m_fiberColorationMode == CURVATURE_COLOR );
+		m_pRadioDistanceAnchoring->SetValue( m_fiberColorationMode == DISTANCE_COLOR );
+		m_pRadioMinDistanceAnchoring->SetValue( m_fiberColorationMode == MINDISTANCE_COLOR );
+		m_pRadioTorsion->SetValue( m_fiberColorationMode == TORSION_COLOR );
+		m_isColorationUpdated = false;
+	}
+	
+	DatasetInfo* pDatasetInfo = NULL;
+	
+	long nextItemId = m_dh->m_mainFrame->m_pListCtrl->GetNextItem(m_dh->m_mainFrame->getCurrentListItem());
+
+	if( nextItemId >= 0)
+	{
+		pDatasetInfo = ((DatasetInfo*) m_dh->m_mainFrame->m_pListCtrl->GetItemData( nextItemId ));
+		if( pDatasetInfo != NULL)
+		{
+			if(pDatasetInfo->getType() != FIBERS)
+			{
+				DatasetInfo::m_pbtnDown->Disable();
+			}
+			else
+			{
+				DatasetInfo::m_pbtnDown->Enable();
+			}
+		}
+		else
+		{
+			DatasetInfo::m_pbtnDown->Disable();
+		}
+	}
+	else
+	{
+		DatasetInfo::m_pbtnDown->Disable();
+	}
+	
+	long prevItemId = m_dh->m_mainFrame->getCurrentListItem() - 1;
+	
+	if( prevItemId != -1)
+	{
+		pDatasetInfo = ((DatasetInfo*) m_dh->m_mainFrame->m_pListCtrl->GetItemData( prevItemId ));
+		if( pDatasetInfo != NULL)
+		{
+			if(pDatasetInfo->getType() != FIBERS)
+			{
+				DatasetInfo::m_pbtnUp->Disable();
+			}
+			else
+			{
+				DatasetInfo::m_pbtnUp->Enable();
+			}
+		}
+		else
+		{
+			DatasetInfo::m_pbtnUp->Disable();
+		}
+	}
+	
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void Fibers::updateCrossingFibersThickness() 
+{
+    if ( NULL != m_pSliderCrossingFibersThickness )
+    {
+        m_thickness = m_pSliderCrossingFibersThickness->GetValue() * 0.25f; 
+        m_cfDrawDirty = true;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void Fibers::findCrossingFibers() 
+{
+    if (   m_cfDrawDirty
+        || m_xDrawn != m_dh->m_xSlize
+        || m_yDrawn != m_dh->m_ySlize
+        || m_zDrawn != m_dh->m_zSlize
+        || m_axialShown != m_dh->m_showAxial
+        || m_coronalShown != m_dh->m_showCoronal
+        || m_sagittalShown != m_dh->m_showSagittal )
+    {
+        m_xDrawn = m_dh->m_xSlize;
+        m_yDrawn = m_dh->m_ySlize;
+        m_zDrawn = m_dh->m_zSlize;
+        m_axialShown = m_dh->m_showAxial;
+        m_coronalShown = m_dh->m_showCoronal;
+        m_sagittalShown = m_dh->m_showSagittal;
+
+        m_cfDrawDirty = true;
+
+        // Determine X, Y and Z range
+        const float xMin( m_dh->m_xSlize + 0.5f - m_thickness );
+        const float xMax( m_dh->m_xSlize + 0.5f + m_thickness );
+        const float yMin( m_dh->m_ySlize + 0.5f - m_thickness );
+        const float yMax( m_dh->m_ySlize + 0.5f + m_thickness );
+        const float zMin( m_dh->m_zSlize + 0.5f - m_thickness );
+        const float zMax( m_dh->m_zSlize + 0.5f + m_thickness );
+
+        bool lineStarted(false);
+
+        m_cfStartOfLine.clear();
+        m_cfPointsPerLine.clear();
+
+        unsigned int index( 0 );
+        unsigned int point( 0 );
+        for ( unsigned int line( 0 ); line < static_cast<unsigned int>(m_countLines); ++line )
+        {
+            if ( m_selected[line] && !m_filtered[line] )
+            {
+                for ( unsigned int i( 0 ); i < static_cast<unsigned int>(getPointsPerLine(line)); ++i, ++point, index += 3 )
+                {
+                    if ( m_sagittalShown && xMin <= m_pointArray[index] && xMax >= m_pointArray[index] )
+                    {
+                        if ( !lineStarted )
+                        {
+                            m_cfStartOfLine.push_back(point);
+                            m_cfPointsPerLine.push_back(0);
+                            lineStarted = true;
+                        }
+                        ++m_cfPointsPerLine.back();
+                    }
+                    else if ( m_coronalShown && yMin <= m_pointArray[index + 1] && yMax >= m_pointArray[index + 1] )
+                    {
+                        if ( !lineStarted )
+                        {
+                            m_cfStartOfLine.push_back(point);
+                            m_cfPointsPerLine.push_back(0);
+                            lineStarted = true;
+                        }
+                        ++m_cfPointsPerLine.back();
+                    }
+                    else if ( m_axialShown && zMin <= m_pointArray[index + 2] && zMax >= m_pointArray[index + 2] )
+                    {
+                        if ( !lineStarted )
+                        {
+                            m_cfStartOfLine.push_back(point);
+                            m_cfPointsPerLine.push_back(0);
+                            lineStarted = true;
+                        }
+                        ++m_cfPointsPerLine.back();
+                    }
+                    else
+                    {
+                        lineStarted = false;
+                    }
+                }
+                lineStarted = false;
+            }
+            else
+            {
+                point += getPointsPerLine(line);
+                index += getPointsPerLine(line) * 3;
+            }
+        }
+    }
+}
+
+void Fibers::setShader()
+{
+    DatasetInfo *pDsInfo = (DatasetInfo*) this;
+
+    if( m_useFakeTubes )
+    {
+        m_dh->m_shaderHelper->m_fakeTubesShader.bind();
+        m_dh->m_shaderHelper->m_fakeTubesShader.setUniInt  ( "globalColor", getShowFS() );
+        m_dh->m_shaderHelper->m_fakeTubesShader.setUniFloat( "dimX", (float) m_dh->m_mainFrame->m_pMainGL->GetSize().x );
+        m_dh->m_shaderHelper->m_fakeTubesShader.setUniFloat( "dimY", (float) m_dh->m_mainFrame->m_pMainGL->GetSize().y );
+        m_dh->m_shaderHelper->m_fakeTubesShader.setUniFloat( "thickness", GLfloat( 3.175 ) );
+    }
+    else if( m_dh->m_useFibersGeometryShader && m_useCrossingFibers )
+    {
+        // Determine X, Y and Z range
+        const float xMin( m_dh->m_xSlize + 0.5f - m_thickness );
+        const float xMax( m_dh->m_xSlize + 0.5f + m_thickness );
+        const float yMin( m_dh->m_ySlize + 0.5f - m_thickness );
+        const float yMax( m_dh->m_ySlize + 0.5f + m_thickness );
+        const float zMin( m_dh->m_zSlize + 0.5f - m_thickness );
+        const float zMax( m_dh->m_zSlize + 0.5f + m_thickness );
+
+        m_dh->m_shaderHelper->m_crossingFibersShader.bind();
+
+		if (m_dh->m_showSagittal)
+		{
+			m_dh->m_shaderHelper->m_crossingFibersShader.setUniFloat("xMin", xMin);
+			m_dh->m_shaderHelper->m_crossingFibersShader.setUniFloat("xMax", xMax);
+		}
+		else
+		{
+			m_dh->m_shaderHelper->m_crossingFibersShader.setUniFloat("xMin", 0);
+			m_dh->m_shaderHelper->m_crossingFibersShader.setUniFloat("xMax", 0);
+		}
+		
+		if (m_dh->m_showCoronal)
+		{
+			m_dh->m_shaderHelper->m_crossingFibersShader.setUniFloat("yMin", yMin);
+			m_dh->m_shaderHelper->m_crossingFibersShader.setUniFloat("yMax", yMax);
+        }
+		else
+		{
+			m_dh->m_shaderHelper->m_crossingFibersShader.setUniFloat("yMin", 0);
+			m_dh->m_shaderHelper->m_crossingFibersShader.setUniFloat("yMax", 0);
+        }
+
+		if (m_dh->m_showAxial)
+		{
+			m_dh->m_shaderHelper->m_crossingFibersShader.setUniFloat("zMin", zMin);
+			m_dh->m_shaderHelper->m_crossingFibersShader.setUniFloat("zMax", zMax);
+		}
+		else
+		{
+			m_dh->m_shaderHelper->m_crossingFibersShader.setUniFloat("zMin", 0);
+			m_dh->m_shaderHelper->m_crossingFibersShader.setUniFloat("zMax", 0);
+        }
+    }
+    else if ( !m_useTex )
+    {
+        m_dh->m_shaderHelper->m_fibersShader.bind();
+        m_dh->m_shaderHelper->setFiberShaderVars();
+        m_dh->m_shaderHelper->m_fibersShader.setUniInt( "useTex", !pDsInfo->getUseTex() );
+        m_dh->m_shaderHelper->m_fibersShader.setUniInt( "useColorMap", m_dh->m_colorMap );
+        m_dh->m_shaderHelper->m_fibersShader.setUniInt( "useOverlay", pDsInfo->getShowFS() );
+    }
+}
+
+void Fibers::releaseShader()
+{
+    if( m_useFakeTubes )
+    {
+        m_dh->m_shaderHelper->m_fakeTubesShader.release();
+    }
+    else if( m_dh->m_useFibersGeometryShader && m_useCrossingFibers )
+    {
+        m_dh->m_shaderHelper->m_crossingFibersShader.release();
+    }
+    else if( !m_useTex )
+    {
+        m_dh->m_shaderHelper->m_fibersShader.release();
+    }
 }

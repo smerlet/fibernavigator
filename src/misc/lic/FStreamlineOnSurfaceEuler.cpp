@@ -12,7 +12,10 @@
 #include "FStreamlineOnSurfaceEuler.h"
 
 #include <set>
-#include <iostream>
+#include <string>
+using std::string;
+
+#include "../../Logger.h"
 
 FArray dirty;
 
@@ -52,14 +55,14 @@ FStreamlineOnSurfaceEuler::FStreamlineOnSurfaceEuler(DatasetHelper* dh, Triangle
         FArray mean;
         FTensor tensortensor;
 
-        m_dh->printDebug(_T("interpolate vectors..."), 1);
-        for (unsigned int i = 0; i < nbCells; ++i)
+        Logger::getInstance()->print( wxT( "interpolate vectors..." ), LOGLEVEL_MESSAGE );
+        for( unsigned int i( 0 ); i < nbCells; ++i )
         {
             Vector center (m_grid->getTriangleCenter(i));
             FTensor t = m_tensorField->getInterpolatedVector(center.x, center.y, center.z);
             cell_vectors[i] = FArray(t).normalize();
         }
-        m_dh->printDebug(_T("done"), 1);
+        Logger::getInstance()->print( wxT( "done" ), LOGLEVEL_MESSAGE );
 
 #ifdef __DEBUG__
         std::cout << "FStreamlineOnSurfaceEuler: exit" << std::endl
@@ -129,7 +132,7 @@ int FStreamlineOnSurfaceEuler::integrate(const FPosition& start, const FIndex& c
             visitedCells.push_back(cellId);
 
             // check results
-#ifdef DEBUG
+#if defined(DEBUG) || defined(_DEBUG)
             /*
              cout << "checking returned position: " << endl;
              if ( isInside( cellId, nextPos ) )
@@ -1189,8 +1192,7 @@ bool FStreamlineOnSurfaceEuler::isInside(const FIndex& cellId, const FArray& pos
         return false;
     } catch (FException& e)
     {
-        m_dh->printDebug(_T("caught exception in isInside:\n "), 2);
-        std::cout << "caught exception in isInside: " << e << std::endl;
+        Logger::getInstance()->print( wxString::Format( wxT( "Caught exception in FStreamlineOnSurfaceEuler::isInside: %s" ), e.getMessage().c_str() ), LOGLEVEL_ERROR );
         return false;
     }
 }

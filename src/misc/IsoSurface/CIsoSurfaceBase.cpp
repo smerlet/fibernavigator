@@ -1105,7 +1105,8 @@ bool CIsoSurfaceBase::save( wxString filename ) const
         return false;
     }
 
-    m_dh->printDebug( _T("start writing file)"), 1 );
+    // TODO use good version
+    //m_dh->printDebug( _T("start writing file)"), 1 );
     dataFile << ( "# vtk DataFile Version 2.0\n" );
     dataFile << ( "generated using FiberNavigator\n" );
     dataFile << ( "ASCII\n" );

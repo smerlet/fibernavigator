@@ -1,0 +1,36 @@
+/*
+ *  The Logger class declaration.
+ *
+ */
+
+#ifndef LOGGER_H_
+#define LOGGER_H_
+
+#include <GL/glew.h>
+#include <wx/string.h>
+#include <sstream>
+
+// print levels
+enum LogLevel { LOGLEVEL_DEBUG, LOGLEVEL_MESSAGE, LOGLEVEL_WARNING, LOGLEVEL_ERROR, LOGLEVEL_GLERROR };
+
+class Logger
+{
+public:
+    ~Logger();
+
+    static Logger * getInstance();
+
+    void print( const wxString &str, const LogLevel level );
+    bool printIfGLError( wxString str );
+    void setMessageLevel( int level );
+
+protected:
+    Logger();
+
+private:
+    static Logger *m_pInstance;
+    int m_level;
+    std::ostringstream m_oss;
+};
+
+#endif // LOGGER_H_

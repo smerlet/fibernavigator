@@ -1,5 +1,7 @@
 #include "Octree.h"
 
+#include "../Logger.h"
+
 #include "../gui/SelectionVOI.h"
 
 #include <algorithm>
@@ -14,12 +16,12 @@ Octree::Octree( int lvl, const std::vector< float > &pointArray, int nb, Dataset
     m_pointArray(pointArray)    
 {
 
-    m_dh->printDebug(_T("Building Octree..."), 1);
+    Logger::getInstance()->print( wxT( "Building Octree..." ), LOGLEVEL_MESSAGE );
     
     findBoundingBox();
     classifyPoints();
     
-    m_dh->printDebug(_T("Octree done"), 1);
+    Logger::getInstance()->print( wxT( "Octree done" ), LOGLEVEL_MESSAGE );
 }
 
 //////////////////////////////////////////
