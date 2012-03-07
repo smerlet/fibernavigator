@@ -23,8 +23,6 @@ public:
     SelectionTree();
     ~SelectionTree();
     
-    int setRoot( SelectionObject *pRootSelObject );
-    
     int addChildrenObject( const int parentId, SelectionObject *pSelObject );
     
     bool removeObject( const int nodeId );
@@ -41,32 +39,16 @@ public:
     
     bool isEmpty() const
     {
-        return m_pRootNode == NULL;
+        return !m_pRootNode->hasChildren();
     }
     
     bool containsId( const int itemId ) const;
     
-    bool isRootObject( SelectionObject *pSelObj ) const
-    {
-        if( m_pRootNode != NULL )
-        {
-            return m_pRootNode->getSelectionObject() == pSelObj;
-        }
-        
-        return false;
-    }
-    
-    bool isRootItem( const int itemId ) const
-    {
-        if( m_pRootNode != NULL )
-        {
-            return m_pRootNode->getId() == itemId;
-        }
-        return false;
-    }
-    
     // Methods related to fiber selection.
     vector< bool > getSelectedFibers( const Fibers* const pFibers );
+    
+    // Methods related to saving and loading.
+    bool populateXMLNode( wxXmlNode *pRootNode );
     
 private:
     class SelectionTreeNode
@@ -87,6 +69,8 @@ private:
         bool removeChildren( const int nodeId );
         void removeAllChildren();
         
+        bool hasChildren() const;
+        
         SelectionTreeNode * const findNode( const int nodeId );
         SelectionTreeNode * const findParentNode( const int searchedChildNodeId );
         
@@ -94,6 +78,8 @@ private:
         
         void updateInObjectRecur( const int fibersCount, Octree *pCurOctree, const vector< int > &reverseIdx );
         void updateInBranchRecur( const int fibersCount );
+        
+        vector< bool > combineChildrenFiberStates() const;
         
         int getId() const;
         

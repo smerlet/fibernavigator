@@ -849,8 +849,9 @@ vector< vector< Vector > > SelectionObject::getSelectedFibersPoints(){
     filteredFiber = l_fibers->getFilteredFibers();
     
     vector< bool > branchToUse;
+    // TODO modify this
     if( m_datasetHelper->m_pSelectionTree->getActiveChildrenObjectsCount( this ) > 0 
-        || m_datasetHelper->m_pSelectionTree->isRootObject( this ) )
+        /*|| m_datasetHelper->m_pSelectionTree->isRootObject( this )*/ )
     {
         branchToUse = m_inBranch;
     }

@@ -39,6 +39,8 @@ public:
     void deleteSceneObject();
     void deleteListItem();
     void deleteTreeItem();
+    void toggleTreeItemActivation();
+    void toggleTreeItemVisibility();
     void refreshAllGLWidgets();
     void refreshViews();
     void renewAllGLWidgets();

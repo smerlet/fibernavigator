@@ -445,22 +445,9 @@ bool DatasetHelper::load( wxString i_fileName, int i_index, const float i_thresh
 					
 					m_fibersGroupLoaded = true;
 				}
-
-                // TODO check if still needed
-				/*std::vector< std::vector< SelectionObject* > > l_selectionObjects = getSelectionObjects();
-				for( unsigned int i = 0; i < l_selectionObjects.size(); ++i )
-				{
-					for( unsigned int j = 0; j < l_selectionObjects[i].size(); ++j )
-					{
-						l_selectionObjects[i][j]->m_inBox.resize( m_countFibers, sizeof(bool) );
-						for( unsigned int k = 0; k < m_countFibers; ++k )
-						{
-							l_selectionObjects[i][j]->m_inBox[k] = 0;
-						}
-
-						l_selectionObjects[i][j]->setIsDirty( true );
-					}
-				}*/
+                
+                // TODO SelectionTree add a message for the selection tree with the id
+                // of this dataset
 
 				l_fibers->setThreshold( i_threshold );
 				l_fibers->setAlpha	  ( i_alpha );
@@ -1092,7 +1079,7 @@ void DatasetHelper::save( const wxString i_fileName )
         l_pointNode->AddProperty( l_propX );
     }
 
-    // TODO modify this
+    // TODO Selection SAVE modify this
     SelectionObject* l_currentSelectionObject;
     std::vector< std::vector< SelectionObject* > > l_selectionObjects = getSelectionObjects();
 

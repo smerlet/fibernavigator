@@ -1135,17 +1135,6 @@ void MainFrame::createNewSelectionObject( ObjectType i_newSelectionObjectType )
         return;
     }
     
-    // Check what is selected in the tree to know where to put this new selection object.
-    wxTreeItemId l_treeSelectionId = m_pTreeWidget->GetSelection();
-    
-    // For the moment, we can only add one root item.
-    if( treeSelectedNew( l_treeSelectionId ) == TYPE_SELECTION_MASTER && 
-        !m_pDatasetHelper->m_pSelectionTree->isEmpty() )
-    {
-        Logger::getInstance()->print( wxT("Cannot add more than one root selection item."), LOGLEVEL_MESSAGE );
-        return;
-    }
-    
     Vector l_center( m_pXSlider->GetValue() * m_pDatasetHelper->m_xVoxel, 
                      m_pYSlider->GetValue() * m_pDatasetHelper->m_yVoxel, 
                      m_pZSlider->GetValue() * m_pDatasetHelper->m_zVoxel );
@@ -1170,14 +1159,16 @@ void MainFrame::createNewSelectionObject( ObjectType i_newSelectionObjectType )
         return;
     }
 
+    // Check what is selected in the tree to know where to put this new selection object.
+    wxTreeItemId l_treeSelectionId = m_pTreeWidget->GetSelection();
     wxTreeItemId l_newSelectionObjectId;
     
-    if( m_pDatasetHelper->m_pSelectionTree->isEmpty() )
+    if( treeSelectedNew( l_treeSelectionId ) == TYPE_SELECTION_MASTER || m_pDatasetHelper->m_pSelectionTree->isEmpty() )
     {
         l_newSelectionObject->setIsMaster( true );
-        int rootId = m_pDatasetHelper->m_pSelectionTree->setRoot( l_newSelectionObject );
+        int itemId = m_pDatasetHelper->m_pSelectionTree->addChildrenObject( -1, l_newSelectionObject );
 
-            CustomTreeItem *pTreeItem = new CustomTreeItem( rootId );
+        CustomTreeItem *pTreeItem = new CustomTreeItem( itemId );
         l_newSelectionObjectId = m_pTreeWidget->AppendItem( m_tSelectionObjectsId, l_newSelectionObject->getName(), 0, -1, pTreeItem );
 
     }
@@ -2137,11 +2128,12 @@ void MainFrame::deleteTreeItem()
         
         if( objectType == TYPE_SELECTION_OBJECT )
         {
-            if( !m_pDatasetHelper->m_pSelectionTree->isRootItem( pTreeItem->getId() ) )
+            SelectionObject *pCurObj = m_pDatasetHelper->m_pSelectionTree->getObject( pTreeItem->getId() );
+            SelectionObject *pParObj = m_pDatasetHelper->m_pSelectionTree->getParentObject( pCurObj );
+            
+            if( pParObj != NULL )
             {
-                CustomTreeItem *pParentItem = (CustomTreeItem*) m_pTreeWidget->GetItemData( m_pTreeWidget->GetItemParent( l_treeId ) );
-                SelectionObject *pSelObj = m_pDatasetHelper->m_pSelectionTree->getObject( pParentItem->getId() );
-                pSelObj->setIsDirty( true );
+                pParObj->setIsDirty( true );
             }
         }
 
@@ -2278,10 +2270,18 @@ void MainFrame::onRightClickTreeItem( wxTreeEvent& event )
 
 void MainFrame::onActivateTreeItem( wxTreeEvent& WXUNUSED(event) )
 {
+    toggleTreeItemActivation();
+}
+
+///////////////////////////////////////////////////////////////////////////
+// Main method called to toggle a tree item activation.
+///////////////////////////////////////////////////////////////////////////
+void MainFrame::toggleTreeItemActivation()
+{
     wxTreeItemId treeId = m_pTreeWidget->GetSelection();
     
     TreeObjectType objectType = treeSelectedNew( treeId );
-
+    
     if( objectType == TYPE_SELECTION_OBJECT )
     {
         CustomTreeItem *pTreeItem = (CustomTreeItem*) m_pTreeWidget->GetItemData( treeId );
@@ -2297,6 +2297,39 @@ void MainFrame::onActivateTreeItem( wxTreeEvent& WXUNUSED(event) )
         for( unsigned int objIdx( 0 ); objIdx < childObjects.size(); ++objIdx )
         {
             childObjects[objIdx]->setIsActive( pSelObject->getIsActive() );
+            childObjects[objIdx]->setIsDirty( true );
+            
+            m_pTreeWidget->SetItemImage( childObjects[objIdx]->getTreeId(), childObjects[objIdx]->getIcon() );
+        }
+    }
+    
+    refreshAllGLWidgets();
+}
+
+///////////////////////////////////////////////////////////////////////////
+// Main method called to toggle a tree item visibility.
+///////////////////////////////////////////////////////////////////////////
+void MainFrame::toggleTreeItemVisibility()
+{
+    wxTreeItemId treeId = m_pTreeWidget->GetSelection();
+    
+    TreeObjectType objectType = treeSelectedNew( treeId );
+    
+    if( objectType == TYPE_SELECTION_OBJECT )
+    {
+        CustomTreeItem *pTreeItem = (CustomTreeItem*) m_pTreeWidget->GetItemData( treeId );
+        
+        SelectionObject *pSelObject = m_pDatasetHelper->m_pSelectionTree->getObject( pTreeItem->getId() );
+        
+        pSelObject->toggleIsVisible();
+        m_pTreeWidget->SetItemImage( treeId, pSelObject->getIcon() );
+        pSelObject->setIsDirty( true );
+        
+        SelectionTree::SelectionObjectVector childObjects = m_pDatasetHelper->m_pSelectionTree->getChildrenObjects( pTreeItem->getId() );
+        
+        for( unsigned int objIdx( 0 ); objIdx < childObjects.size(); ++objIdx )
+        {
+            childObjects[objIdx]->setIsVisible( pSelObject->getIsVisible() );
             childObjects[objIdx]->setIsDirty( true );
             
             m_pTreeWidget->SetItemImage( childObjects[objIdx]->getTreeId(), childObjects[objIdx]->getIcon() );

@@ -1619,42 +1619,11 @@ void PropertiesWindow::OnToggleShowSelectionObject( wxCommandEvent& WXUNUSED(eve
     Logger::getInstance()->print( _T( "Event triggered - PropertiesWindow::OnToggleShowSelectionObject" ), LOGLEVEL_DEBUG );
 
     if( !m_mainFrame->m_pDatasetHelper->m_theScene)
+    {
         return;
-
-    // Get the selected selection object.
-    wxTreeItemId l_selectionObjectTreeId = m_mainFrame->m_pTreeWidget->GetSelection();
-
-    if( m_mainFrame->treeSelected( l_selectionObjectTreeId ) == MASTER_OBJECT )
-    {
-        SelectionObject* l_selecitonObject = (SelectionObject*)( m_mainFrame->m_pTreeWidget->GetItemData( l_selectionObjectTreeId ) );
-        l_selecitonObject->toggleIsVisible();
-        m_mainFrame->m_pTreeWidget->SetItemImage( l_selectionObjectTreeId, l_selecitonObject->getIcon() );
-        l_selecitonObject->setIsDirty( true );
-
-        int l_childSelectionObjects = m_mainFrame->m_pTreeWidget->GetChildrenCount( l_selectionObjectTreeId );
-        wxTreeItemIdValue childcookie = 0;
-        for( int i = 0; i < l_childSelectionObjects; ++i )
-        {
-            wxTreeItemId l_childId = m_mainFrame->m_pTreeWidget->GetNextChild( l_selectionObjectTreeId, childcookie );
-            if( l_childId.IsOk() )
-            {
-                SelectionObject* childBox = ( (SelectionObject*)( m_mainFrame->m_pTreeWidget->GetItemData( l_childId ) ) );
-                childBox->setIsVisible( l_selecitonObject->getIsVisible() );
-                m_mainFrame->m_pTreeWidget->SetItemImage( l_childId, childBox->getIcon() );
-                childBox->setIsDirty( true );
-            }
-        }
     }
-    else if( m_mainFrame->treeSelected( l_selectionObjectTreeId ) == CHILD_OBJECT )
-    {
-        SelectionObject *l_selectionObject = (SelectionObject*)( m_mainFrame->m_pTreeWidget->GetItemData( l_selectionObjectTreeId ) );
-        l_selectionObject->toggleIsVisible();
-        m_mainFrame->m_pTreeWidget->SetItemImage( l_selectionObjectTreeId, l_selectionObject->getIcon() );
-        l_selectionObject->setIsDirty( true );
-    }
-
-    m_mainFrame->m_pDatasetHelper->m_selBoxChanged = true;
-    m_mainFrame->refreshAllGLWidgets();
+    
+    m_mainFrame->toggleTreeItemVisibility();
 }
 
 void PropertiesWindow::OnAssignColor( wxCommandEvent& WXUNUSED(event) )
@@ -1953,7 +1922,9 @@ void PropertiesWindow::AddSelectionObjectToSelectionTree( SelectionObject *pSelO
     if( m_mainFrame->m_pDatasetHelper->m_pSelectionTree->isEmpty() )
     {
         pSelObj->setIsMaster( true );
-        int rootId = m_mainFrame->m_pDatasetHelper->m_pSelectionTree->setRoot( pSelObj );
+        //int rootId = m_mainFrame->m_pDatasetHelper->m_pSelectionTree->setRoot( pSelObj );
+        // TODO make this bettre
+        int rootId = m_mainFrame->m_pDatasetHelper->m_pSelectionTree->addChildrenObject( -1, pSelObj );
         
         CustomTreeItem *pTreeItem = new CustomTreeItem( rootId );
         newSelectionObjectId = m_mainFrame->m_pTreeWidget->AppendItem( m_mainFrame->m_tSelectionObjectsId, pSelObj->getName(), 0, -1, pTreeItem );

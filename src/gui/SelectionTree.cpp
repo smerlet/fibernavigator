@@ -65,7 +65,10 @@ SelectionObjectVector SelectionTree::SelectionTreeNode::getAllSelectionObjects()
 {
     SelectionObjectVector objs;
     
-    objs.push_back( m_pSelObject );
+    if( m_pSelObject != NULL )
+    {
+        objs.push_back( m_pSelObject );
+    }
     
     SelectionObjectVector childObjs = getAllChildrenSelectionObjects();
     objs.insert( objs.end(), childObjs.begin(), childObjs.end() );
@@ -144,6 +147,11 @@ void SelectionTree::SelectionTreeNode::removeAllChildren()
     m_children.clear();
 }
 
+bool SelectionTree::SelectionTreeNode::hasChildren() const
+{
+    return !m_children.empty();
+}
+
 SelectionTree::SelectionTreeNode * const
     SelectionTree::SelectionTreeNode::findNode( const int nodeId )
 {
@@ -213,14 +221,16 @@ void SelectionTree::SelectionTreeNode::updateInObjectRecur( const int fibersCoun
 {
     // TODO check if dirty, therefore if it is needed.
     
-    vector< int > pointsInsideObject = pCurOctree->getPointsInside( m_pSelObject );
-    
-    //m_pSelObject->m_inBox.resize( fibersCount, false );
-    m_pSelObject->m_inBox.assign( fibersCount, false );
-    
-    for( unsigned int ptIdx( 0 ); ptIdx < pointsInsideObject.size(); ++ptIdx )
+    if( m_pSelObject != NULL )
     {
-        m_pSelObject->m_inBox[ reverseIdx[ pointsInsideObject[ ptIdx ] ] ] = true;
+        vector< int > pointsInsideObject = pCurOctree->getPointsInside( m_pSelObject );
+        
+        m_pSelObject->m_inBox.assign( fibersCount, false );
+        
+        for( unsigned int ptIdx( 0 ); ptIdx < pointsInsideObject.size(); ++ptIdx )
+        {
+            m_pSelObject->m_inBox[ reverseIdx[ pointsInsideObject[ ptIdx ] ] ] = true;
+        }
     }
     
     // Call this recursively for all children.
@@ -251,32 +261,59 @@ void SelectionTree::SelectionTreeNode::updateInBranchRecur( const int fibersCoun
         }
     }
     
-    m_pSelObject->m_inBranch.assign( fibersCount, false );
-    
-    if( m_children.empty() || !atLeastOneActiveChildren )
+    if( m_pSelObject != NULL )
     {
-        // This node does not have any active child.
-        // Use the elements in the current box to update the m_inBranch.
-        bool negate( m_pSelObject->getIsNOT() );
+        m_pSelObject->m_inBranch.assign( fibersCount, false );
         
+        if( m_children.empty() || !atLeastOneActiveChildren )
+        {
+            // This node does not have any active child.
+            // Use the elements in the current box to update the m_inBranch.
+            bool negate( m_pSelObject->getIsNOT() );
+            
+            for( unsigned int elemIdx( 0 ); elemIdx < m_pSelObject->m_inBox.size(); ++elemIdx )
+            {
+                m_pSelObject->m_inBranch[ elemIdx ] = ( !negate ? m_pSelObject->m_inBox[ elemIdx ] :
+                                                       !m_pSelObject->m_inBox[ elemIdx ] );
+            }
+            
+            return;
+        }
+    
+        // Combine the child state with the current.
+        bool negate( m_pSelObject->getIsNOT() );
         for( unsigned int elemIdx( 0 ); elemIdx < m_pSelObject->m_inBox.size(); ++elemIdx )
         {
             m_pSelObject->m_inBranch[ elemIdx ] = ( !negate ? m_pSelObject->m_inBox[ elemIdx ] :
-                                                   !m_pSelObject->m_inBox[ elemIdx ] );
+                                                   !m_pSelObject->m_inBox[ elemIdx ] ) & childInBranch[ elemIdx ];
         }
-        
-        return;
     }
+}
 
+vector< bool > SelectionTree::SelectionTreeNode::combineChildrenFiberStates() const
+{
+    vector< bool > combinedStates;
     
-    // Combine the child state with the current.
-    bool negate( m_pSelObject->getIsNOT() );
-    for( unsigned int elemIdx( 0 ); elemIdx < m_pSelObject->m_inBox.size(); ++elemIdx )
+    if( m_children.empty() )
     {
-        m_pSelObject->m_inBranch[ elemIdx ] = ( !negate ? m_pSelObject->m_inBox[ elemIdx ] :
-                                               !m_pSelObject->m_inBox[ elemIdx ] ) & childInBranch[ elemIdx ];
+        return combinedStates;
     }
     
+    int numberElems( m_children[0]->m_pSelObject->m_inBox.size() );
+
+    combinedStates.assign( numberElems, false );
+    
+    for( unsigned int childIdx( 0 ); childIdx < m_children.size(); ++childIdx )
+    {
+        if( m_children[ childIdx ]->m_pSelObject->getIsActive() )
+        {
+            // Get the inBranch and the state, and combine.
+            // First false probably not needed.
+            combineBoolVectors( combinedStates, m_children[ childIdx ]->m_pSelObject->m_inBranch, false, false );
+        }
+    }
+    
+    return combinedStates;
 }
 
 int SelectionTree::SelectionTreeNode::getId() const
@@ -301,34 +338,31 @@ SelectionTree::SelectionTreeNode::~SelectionTreeNode()
 /////
 
 SelectionTree::SelectionTree()
-    : m_pRootNode( NULL ),
-      m_nextNodeId( 0 )
-{}
-
-int SelectionTree::setRoot( SelectionObject *pRootSelObject )
+    : m_nextNodeId( 0 )
 {
-    if( m_pRootNode == NULL )
+    m_pRootNode = new SelectionTreeNode( m_nextNodeId, NULL );
+    ++m_nextNodeId;
+}
+
+// To add a node to the first layer of the SelectionTree, use -1 as the id.
+int SelectionTree::addChildrenObject( const int parentId, SelectionObject *pSelObject )
+{
+    if( pSelObject == NULL )
     {
-        // Create new node, add it
-        m_pRootNode = new SelectionTreeNode( m_nextNodeId, pRootSelObject );
-        ++m_nextNodeId;
+        return -1;
+    }
+    
+    SelectionTreeNode *pParentNode( NULL );
+    
+    if( parentId == -1 )
+    {
+        pParentNode = m_pRootNode;
     }
     else
     {
-        // Set the selection object of the node.
-        m_pRootNode->setSelectionObject( pRootSelObject );
+        // Find the node with id, if possible.
+        pParentNode = m_pRootNode->findNode( parentId );
     }
-    
-    // Update the selection because it has changed.
-    // TODO
-    
-    return m_pRootNode->getId();
-}
-
-int SelectionTree::addChildrenObject( const int parentId, SelectionObject *pSelObject )
-{
-    // Find the node with id, if possible.
-    SelectionTreeNode * const pParentNode = m_pRootNode->findNode( parentId );
     
     // If found, create the children node with the next id and set its selection object.
     if( pParentNode != NULL )
@@ -349,25 +383,8 @@ int SelectionTree::addChildrenObject( const int parentId, SelectionObject *pSelO
 
 bool SelectionTree::removeObject( const int nodeId )
 {
-    // Find the node with the id
-    if( m_pRootNode == NULL )
-    {
-        return false;
-    }
-    
-    if( m_pRootNode->getId() == nodeId )
-    {
-        // We want to remove the current node. Propagate to children.
-        m_pRootNode->removeAllChildren();
-
-        delete m_pRootNode;
-        m_pRootNode = NULL;
-        
-        return true;
-    }
-    
     SelectionTreeNode * const pParentNode = m_pRootNode->findParentNode( nodeId );
-    // if found, remove it
+    // If found, remove it
     
     if( pParentNode != NULL )
     {
@@ -383,14 +400,11 @@ bool SelectionTree::removeObject( const int nodeId )
 
 SelectionObject* SelectionTree::getObject( const int itemId ) const
 {
-    if( m_pRootNode != NULL )
+    SelectionTreeNode *pNode = m_pRootNode->findNode( itemId );
+    
+    if( pNode != NULL )
     {
-        SelectionTreeNode *pNode = m_pRootNode->findNode( itemId );
-        
-        if( pNode != NULL )
-        {
-            return pNode->getSelectionObject();
-        }
+        return pNode->getSelectionObject();
     }
     
     return NULL;
@@ -398,11 +412,6 @@ SelectionObject* SelectionTree::getObject( const int itemId ) const
 
 SelectionObject* SelectionTree::getParentObject( SelectionObject *pSelObj ) const
 {
-    if( m_pRootNode == NULL )
-    {
-        return NULL;
-    }
-    
     SelectionTreeNode * const pTreeNode = m_pRootNode->findNode( pSelObj );
     
     if( pTreeNode != NULL )
@@ -422,10 +431,7 @@ SelectionObjectVector SelectionTree::getAllObjects() const
 {
     SelectionObjectVector selObj;
     
-    if( m_pRootNode != NULL )
-    {
-        selObj = m_pRootNode->getAllSelectionObjects();
-    }
+    selObj = m_pRootNode->getAllSelectionObjects();
 
     return selObj;
 }
@@ -434,14 +440,11 @@ SelectionObjectVector SelectionTree::getChildrenObjects( const int itemId ) cons
 {
     SelectionObjectVector selObjs;
     
-    if( m_pRootNode != NULL )
-    {
         SelectionTreeNode *pNode = m_pRootNode->findNode( itemId );
         
-        if( pNode != NULL )
-        {
-            selObjs = pNode->getAllChildrenSelectionObjects();
-        }
+    if( pNode != NULL )
+    {
+        selObjs = pNode->getAllChildrenSelectionObjects();
     }
     
     return selObjs;
@@ -451,14 +454,11 @@ int SelectionTree::getActiveChildrenObjectsCount( SelectionObject *pSelObj ) con
 {
     int activeChildrenCount( 0 );
     
-    if( m_pRootNode != NULL )
+    SelectionTreeNode * const pTreeNode = m_pRootNode->findNode( pSelObj );
+ 
+    if( pTreeNode != NULL )
     {
-        SelectionTreeNode * const pTreeNode = m_pRootNode->findNode( pSelObj );
-     
-        if( pTreeNode != NULL )
-        {
-            activeChildrenCount = pTreeNode->getActiveDirectChildrenCount();
-        }
+        activeChildrenCount = pTreeNode->getActiveDirectChildrenCount();
     }
     
     return activeChildrenCount;
@@ -466,11 +466,6 @@ int SelectionTree::getActiveChildrenObjectsCount( SelectionObject *pSelObj ) con
 
 bool SelectionTree::containsId( const int itemId ) const
 {
-    if( m_pRootNode == NULL )
-    {
-        return false;
-    }
-    
     SelectionTreeNode *pFoundNode = m_pRootNode->findNode( itemId );
     
     return pFoundNode != NULL;
@@ -482,13 +477,16 @@ vector< bool > SelectionTree::getSelectedFibers( const Fibers* const pFibers )
     {
         // TODO determine what we do
     }
+        
+    const int fibersCount( pFibers->getFibersCount() );
     
-    if( m_pRootNode == NULL )
+    // This should never happen.
+    if( isEmpty() || m_pRootNode->getActiveDirectChildrenCount() == 0 )
     {
-        // TODO determine what we do
+        // TODO print warning message.
+        return vector< bool >( fibersCount, true );
     }
     
-    const int fibersCount( pFibers->getFibersCount() );
     const vector< int > reverseIndex( pFibers->getReverseIdx() );
     
     Octree *pCurOctree( pFibers->getOctree() );
@@ -501,8 +499,17 @@ vector< bool > SelectionTree::getSelectedFibers( const Fibers* const pFibers )
     // and the selected fibers of its children.
     m_pRootNode->updateInBranchRecur( fibersCount );
     
-    // TODO remove just to silence xcode temporarily
-    return m_pRootNode->getSelectionObject()->m_inBranch;
+    // Since the root does not have a selection object, we need to combine each of its
+    // children to get the selected fibers.
+    vector< bool > combinedChildrenStates = m_pRootNode->combineChildrenFiberStates();
+    
+    return combinedChildrenStates;
+}
+
+bool SelectionTree::populateXMLNode( wxXmlNode *pRootNode )
+{
+    
+    return true;
 }
 
 SelectionTree::~SelectionTree()
