@@ -1919,19 +1919,18 @@ void PropertiesWindow::AddSelectionObjectToSelectionTree( SelectionObject *pSelO
 {
     wxTreeItemId newSelectionObjectId;
     
-    if( m_mainFrame->m_pDatasetHelper->m_pSelectionTree->isEmpty() )
+    if( m_mainFrame->treeSelectedNew( parentTreeId ) == TYPE_SELECTION_MASTER )
     {
         pSelObj->setIsMaster( true );
-        //int rootId = m_mainFrame->m_pDatasetHelper->m_pSelectionTree->setRoot( pSelObj );
-        // TODO make this bettre
-        int rootId = m_mainFrame->m_pDatasetHelper->m_pSelectionTree->addChildrenObject( -1, pSelObj );
+
+        int itemId = m_mainFrame->m_pDatasetHelper->m_pSelectionTree->addChildrenObject( -1, pSelObj );
         
-        CustomTreeItem *pTreeItem = new CustomTreeItem( rootId );
+        CustomTreeItem *pTreeItem = new CustomTreeItem( itemId );
         newSelectionObjectId = m_mainFrame->m_pTreeWidget->AppendItem( m_mainFrame->m_tSelectionObjectsId, pSelObj->getName(), 0, -1, pTreeItem );
         
         m_mainFrame->m_pTreeWidget->SetItemBackgroundColour( newSelectionObjectId, *wxCYAN );
     }
-    else
+    else if( m_mainFrame->treeSelectedNew( parentTreeId ) == TYPE_SELECTION_OBJECT )
     {
         CustomTreeItem *pItem = (CustomTreeItem*) m_mainFrame->m_pTreeWidget->GetItemData( parentTreeId );
         
@@ -1943,6 +1942,11 @@ void PropertiesWindow::AddSelectionObjectToSelectionTree( SelectionObject *pSelO
         newSelectionObjectId = m_mainFrame->m_pTreeWidget->AppendItem( parentTreeId, pSelObj->getName(), 0, -1, pTreeItem );
         
         m_mainFrame->m_pTreeWidget->SetItemBackgroundColour( newSelectionObjectId, *wxGREEN );
+    }
+    else
+    {
+        Logger::getInstance()->print( wxT( "Tried to add a selection object under the points part. Something in the code isn't right." ), LOGLEVEL_DEBUG );
+        return;
     }
     
     pSelObj->setTreeId( newSelectionObjectId );

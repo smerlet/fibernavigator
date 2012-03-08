@@ -767,7 +767,7 @@ void TheScene::drawSelectionObjects()
     // Draw selection objects that are not VOIs.
     for( unsigned int objIdx( 0 ); objIdx < selectionObjects.size(); ++objIdx )
     {
-        SelectionVOI *pObjAsVOI = (SelectionVOI*) selectionObjects[objIdx];
+        SelectionVOI *pObjAsVOI = dynamic_cast<SelectionVOI*>( selectionObjects[objIdx] );
         
         if( pObjAsVOI == NULL )
         {
@@ -807,7 +807,7 @@ void TheScene::drawSelectionObjects()
     
     for( unsigned int objIdx( 0 ); objIdx < selectionObjects.size(); ++objIdx )
     {
-        SelectionVOI *pObjAsVOI = (SelectionVOI*) selectionObjects[objIdx];
+        SelectionVOI *pObjAsVOI = dynamic_cast<SelectionVOI*>( selectionObjects[objIdx] );
         
         if( pObjAsVOI != NULL )
         {
