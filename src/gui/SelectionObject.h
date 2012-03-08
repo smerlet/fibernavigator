@@ -20,14 +20,18 @@
 
 #include "BoundingBox.h"
 #include "SceneObject.h"
-#include <GL/glew.h>
-#include <vector>
-#include <list>
-#include <wx/grid.h>
 #include "../misc/Algorithms/Face3D.h"
 #include "../dataset/DatasetHelper.h"
 #include "../misc/Algorithms/Helper.h"
 #include "../misc/IsoSurface/Vector.h"
+
+#include <wx/grid.h>
+
+#include <GL/glew.h>
+
+#include <list>
+#include <map>
+#include <vector>
 
 class Anatomy;
 class CIsoSurface;
@@ -176,6 +180,24 @@ public :
 
     void       setMeanFiberColorMode( FibersColorationMode i_mode ) { m_meanFiberColorationMode = i_mode; };
     FibersColorationMode getMeanFiberColorMode()     { return m_meanFiberColorationMode;        };
+    
+    // Methods related to the different fiber bundles selection.
+    typedef    wxString FiberIdType;
+    struct SelectionState
+    {
+        public: 
+            SelectionState()
+                : m_inBoxNeedsUpdating( true )
+            {};
+        
+            vector< bool > m_inBranch;
+            vector< bool > m_inBox;
+            bool           m_inBoxNeedsUpdating;
+    };
+    
+    bool            addFiberDataset(    const FiberIdType &fiberId );
+    void            removeFiberDataset( const FiberIdType &fiberId );
+    SelectionState& getState(           const FiberIdType &fiberId );
 
     //Distance coloring setup
     bool        IsUsedForDistanceColoring() const;
@@ -191,7 +213,6 @@ public :
     Anatomy*       m_sourceAnatomy;
     bool          m_boxMoved;
     bool          m_boxResized;
-
 
 protected :
     virtual void drawObject( GLfloat* i_color ) = 0;
@@ -246,6 +267,11 @@ protected :
     float m_maxX;
     float m_maxY;
     float m_maxZ;
+    
+protected:
+    std::map< FiberIdType, SelectionState > m_selectionStates;
+    
+    void notifyInBoxNeedsUpdating();
 
     /******************************************************************************************
     * Functions/variables related to the fiber info calculation.

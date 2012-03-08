@@ -446,8 +446,8 @@ bool DatasetHelper::load( wxString i_fileName, int i_index, const float i_thresh
 					m_fibersGroupLoaded = true;
 				}
                 
-                // TODO SelectionTree add a message for the selection tree with the id
-                // of this dataset
+                // Tell the selection tree that this fiber dataset exists.
+                m_pSelectionTree->addFiberDataset( l_fibers->getName(), l_fibers->getLineCount() );
 
 				l_fibers->setThreshold( i_threshold );
 				l_fibers->setAlpha	  ( i_alpha );

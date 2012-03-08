@@ -217,30 +217,36 @@ SelectionTree::SelectionTreeNode * const
     return NULL;
 }
 
-void SelectionTree::SelectionTreeNode::updateInObjectRecur( const int fibersCount, Octree *pCurOctree, const vector< int > &reverseIdx )
+void SelectionTree::SelectionTreeNode::updateInObjectRecur( const int fibersCount, Octree *pCurOctree, const vector< int > &reverseIdx, const SelectionObject::FiberIdType &fiberId )
 {
-    // TODO check if dirty, therefore if it is needed.
-    
     if( m_pSelObject != NULL )
     {
-        vector< int > pointsInsideObject = pCurOctree->getPointsInside( m_pSelObject );
+        SelectionObject::SelectionState &curState = m_pSelObject->getState( fiberId );
         
-        m_pSelObject->m_inBox.assign( fibersCount, false );
-        
-        for( unsigned int ptIdx( 0 ); ptIdx < pointsInsideObject.size(); ++ptIdx )
+        if( curState.m_inBoxNeedsUpdating )
         {
-            m_pSelObject->m_inBox[ reverseIdx[ pointsInsideObject[ ptIdx ] ] ] = true;
+            vector< int > pointsInsideObject = pCurOctree->getPointsInside( m_pSelObject );
+            
+            curState.m_inBox.assign( fibersCount, false );
+            
+            for( unsigned int ptIdx( 0 ); ptIdx < pointsInsideObject.size(); ++ptIdx )
+            {
+                curState.m_inBox[ reverseIdx[ pointsInsideObject[ ptIdx ] ] ] = true;
+            }
         }
+        
+        curState.m_inBoxNeedsUpdating = false;
     }
     
     // Call this recursively for all children.
     for( unsigned int childIdx( 0 ); childIdx < m_children.size(); ++childIdx )
     {
-        m_children[ childIdx ]->updateInObjectRecur( fibersCount, pCurOctree, reverseIdx );
+        m_children[ childIdx ]->updateInObjectRecur( fibersCount, pCurOctree, reverseIdx, fiberId );
     }
 }
 
-void SelectionTree::SelectionTreeNode::updateInBranchRecur( const int fibersCount )
+void SelectionTree::SelectionTreeNode::updateInBranchRecur( const int fibersCount,
+                                                            const SelectionObject::FiberIdType &fiberId )
 {
     // TODO find a way to check if dirty and propagate
     
@@ -250,20 +256,23 @@ void SelectionTree::SelectionTreeNode::updateInBranchRecur( const int fibersCoun
     // Call update for all children.
     for( unsigned int childIdx( 0 ); childIdx < m_children.size(); ++childIdx )
     {
-        m_children[ childIdx ]->updateInBranchRecur( fibersCount );
+        m_children[ childIdx ]->updateInBranchRecur( fibersCount, fiberId );
         
         if( m_children[ childIdx ]->m_pSelObject->getIsActive() )
         {
             // Get the inBranch and the state, and combine.
             // First false probably not needed.
-            combineBoolVectors( childInBranch, m_children[ childIdx ]->m_pSelObject->m_inBranch, false, false );
+            // Get current state for specific fiber dataset.
+            SelectionObject::SelectionState &curChildState = m_children[ childIdx ]->m_pSelObject->getState( fiberId ); 
+            combineBoolVectors( childInBranch, curChildState.m_inBranch, false, false );
             atLeastOneActiveChildren = true;
         }
     }
     
     if( m_pSelObject != NULL )
     {
-        m_pSelObject->m_inBranch.assign( fibersCount, false );
+        SelectionObject::SelectionState &curState = m_pSelObject->getState( fiberId );
+        curState.m_inBranch.assign( fibersCount, false );
         
         if( m_children.empty() || !atLeastOneActiveChildren )
         {
@@ -271,10 +280,10 @@ void SelectionTree::SelectionTreeNode::updateInBranchRecur( const int fibersCoun
             // Use the elements in the current box to update the m_inBranch.
             bool negate( m_pSelObject->getIsNOT() );
             
-            for( unsigned int elemIdx( 0 ); elemIdx < m_pSelObject->m_inBox.size(); ++elemIdx )
+            for( unsigned int elemIdx( 0 ); elemIdx < curState.m_inBox.size(); ++elemIdx )
             {
-                m_pSelObject->m_inBranch[ elemIdx ] = ( !negate ? m_pSelObject->m_inBox[ elemIdx ] :
-                                                       !m_pSelObject->m_inBox[ elemIdx ] );
+                curState.m_inBranch[ elemIdx ] = ( !negate ? curState.m_inBox[ elemIdx ] :
+                                                   !curState.m_inBox[ elemIdx ] );
             }
             
             return;
@@ -282,15 +291,16 @@ void SelectionTree::SelectionTreeNode::updateInBranchRecur( const int fibersCoun
     
         // Combine the child state with the current.
         bool negate( m_pSelObject->getIsNOT() );
-        for( unsigned int elemIdx( 0 ); elemIdx < m_pSelObject->m_inBox.size(); ++elemIdx )
+
+        for( unsigned int elemIdx( 0 ); elemIdx < curState.m_inBox.size(); ++elemIdx )
         {
-            m_pSelObject->m_inBranch[ elemIdx ] = ( !negate ? m_pSelObject->m_inBox[ elemIdx ] :
-                                                   !m_pSelObject->m_inBox[ elemIdx ] ) & childInBranch[ elemIdx ];
+            curState.m_inBranch[ elemIdx ] = ( !negate ? curState.m_inBox[ elemIdx ] :
+                                               !curState.m_inBox[ elemIdx ] ) & childInBranch[ elemIdx ];
         }
     }
 }
 
-vector< bool > SelectionTree::SelectionTreeNode::combineChildrenFiberStates() const
+vector< bool > SelectionTree::SelectionTreeNode::combineChildrenFiberStates(const SelectionObject::FiberIdType &fiberId ) const
 {
     vector< bool > combinedStates;
     
@@ -299,9 +309,9 @@ vector< bool > SelectionTree::SelectionTreeNode::combineChildrenFiberStates() co
         return combinedStates;
     }
     
-    int numberElems( m_children[0]->m_pSelObject->m_inBox.size() );
+    SelectionObject::SelectionState tempChildState = m_children[0]->m_pSelObject->getState( fiberId );
 
-    combinedStates.assign( numberElems, false );
+    combinedStates.assign( tempChildState.m_inBox.size(), false );
     
     for( unsigned int childIdx( 0 ); childIdx < m_children.size(); ++childIdx )
     {
@@ -309,7 +319,8 @@ vector< bool > SelectionTree::SelectionTreeNode::combineChildrenFiberStates() co
         {
             // Get the inBranch and the state, and combine.
             // First false probably not needed.
-            combineBoolVectors( combinedStates, m_children[ childIdx ]->m_pSelObject->m_inBranch, false, false );
+            SelectionObject::SelectionState &curChildState = m_children[childIdx]->m_pSelObject->getState( fiberId );
+            combineBoolVectors( combinedStates, curChildState.m_inBranch, false, false );
         }
     }
     
@@ -366,7 +377,7 @@ int SelectionTree::addChildrenObject( const int parentId, SelectionObject *pSelO
     
     // If found, create the children node with the next id and set its selection object.
     if( pParentNode != NULL )
-    {
+    {        
         // Add the node to the children of the current.
         SelectionTreeNode *pChildrenNode = new SelectionTreeNode( m_nextNodeId, pSelObject );
         pParentNode->addChildren( pChildrenNode );
@@ -375,6 +386,14 @@ int SelectionTree::addChildrenObject( const int parentId, SelectionObject *pSelO
         
         // Increment the nextId.
         ++m_nextNodeId;
+        
+        // Notufy the Selection Object of all existing fiber sets.
+        for( map< SelectionObject::FiberIdType, int >::iterator fibIt( m_fibersIdAndCount.begin() ); 
+            fibIt != m_fibersIdAndCount.end(); ++fibIt )
+        {
+            pSelObject->addFiberDataset( (*fibIt).first );
+        }
+            
         return pChildrenNode->getId();
     }
 
@@ -384,8 +403,8 @@ int SelectionTree::addChildrenObject( const int parentId, SelectionObject *pSelO
 bool SelectionTree::removeObject( const int nodeId )
 {
     SelectionTreeNode * const pParentNode = m_pRootNode->findParentNode( nodeId );
+
     // If found, remove it
-    
     if( pParentNode != NULL )
     {
         pParentNode->removeChildren( nodeId );
@@ -440,7 +459,7 @@ SelectionObjectVector SelectionTree::getChildrenObjects( const int itemId ) cons
 {
     SelectionObjectVector selObjs;
     
-        SelectionTreeNode *pNode = m_pRootNode->findNode( itemId );
+    SelectionTreeNode *pNode = m_pRootNode->findNode( itemId );
         
     if( pNode != NULL )
     {
@@ -491,19 +510,48 @@ vector< bool > SelectionTree::getSelectedFibers( const Fibers* const pFibers )
     
     Octree *pCurOctree( pFibers->getOctree() );
     
+    SelectionObject::FiberIdType fiberId = const_cast< Fibers* >(pFibers)->getName();
+    
     // Update all selection objects to make sure that each of them knows which 
     // fibers is in it.
-    m_pRootNode->updateInObjectRecur( fibersCount, pCurOctree, reverseIndex);
+    m_pRootNode->updateInObjectRecur( fibersCount, pCurOctree, reverseIndex, fiberId );
     
     // Update all selection objects to make sure they take into account their state
     // and the selected fibers of its children.
-    m_pRootNode->updateInBranchRecur( fibersCount );
+    m_pRootNode->updateInBranchRecur( fibersCount, fiberId );
     
     // Since the root does not have a selection object, we need to combine each of its
     // children to get the selected fibers.
-    vector< bool > combinedChildrenStates = m_pRootNode->combineChildrenFiberStates();
+    vector< bool > combinedChildrenStates = m_pRootNode->combineChildrenFiberStates( fiberId );
     
     return combinedChildrenStates;
+}
+
+bool SelectionTree::addFiberDataset( const SelectionObject::FiberIdType &fiberId, const int fibersCount )
+{
+    SelectionObjectVector selObjs = getAllObjects();
+ 
+    for( SelectionObjectVector::iterator objIt (selObjs.begin()); objIt != selObjs.end(); ++objIt )
+    {
+        (*objIt)->addFiberDataset( fiberId );
+    }
+    
+    return ( m_fibersIdAndCount.insert( pair< SelectionObject::FiberIdType, int >( fiberId, fibersCount ) ) ).second;
+}
+
+void SelectionTree::removeFiberDataset( const SelectionObject::FiberIdType &fiberId )
+{
+    if( m_fibersIdAndCount.count( fiberId ) > 0 )
+    {
+        SelectionObjectVector selObjs = getAllObjects();
+        
+        for( SelectionObjectVector::iterator objIt (selObjs.begin()); objIt != selObjs.end(); ++objIt )
+        {
+            (*objIt)->removeFiberDataset( fiberId );
+        }
+    }
+    
+    m_fibersIdAndCount.erase( fiberId );
 }
 
 bool SelectionTree::populateXMLNode( wxXmlNode *pRootNode )

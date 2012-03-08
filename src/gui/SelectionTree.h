@@ -8,6 +8,8 @@
 
 #include "SelectionObject.h"
 
+#include <map>
+using std::map;
 #include <vector>
 using std::vector;
 
@@ -47,6 +49,10 @@ public:
     // Methods related to fiber selection.
     vector< bool > getSelectedFibers( const Fibers* const pFibers );
     
+    // Methods related to multiple fibers dataset management.
+    bool addFiberDataset(    const SelectionObject::FiberIdType &fiberId, const int fibersCount );
+    void removeFiberDataset( const SelectionObject::FiberIdType &fiberId );
+    
     // Methods related to saving and loading.
     bool populateXMLNode( wxXmlNode *pRootNode );
     
@@ -76,10 +82,11 @@ private:
         
         SelectionTreeNode * const findNode( SelectionObject *pSelObj );
         
-        void updateInObjectRecur( const int fibersCount, Octree *pCurOctree, const vector< int > &reverseIdx );
-        void updateInBranchRecur( const int fibersCount );
+        void updateInObjectRecur( const int fibersCount, Octree *pCurOctree, 
+                                 const vector< int > &reverseIdx, const SelectionObject::FiberIdType &fiberId );
+        void updateInBranchRecur( const int fibersCount, const SelectionObject::FiberIdType &fiberId );
         
-        vector< bool > combineChildrenFiberStates() const;
+        vector< bool > combineChildrenFiberStates( const SelectionObject::FiberIdType &fiberId ) const;
         
         int getId() const;
         
@@ -113,6 +120,8 @@ private:
     SelectionTreeNode *m_pRootNode;
     
     int m_nextNodeId;
+    
+    map< SelectionObject::FiberIdType, int > m_fibersIdAndCount;
 };
 
 
