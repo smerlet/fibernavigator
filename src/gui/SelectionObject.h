@@ -36,6 +36,7 @@
 class Anatomy;
 class CIsoSurface;
 class DatasetHelper;
+class Fibers;
 class MainCanvas;
 
 using namespace std;
@@ -349,10 +350,16 @@ protected:
                                                      float                      &o_meanCrossSection,
                                                      float                      &o_maxCrossSection,
                                                      float                      &o_minCrossSection         );
+    // TODO remove
     bool   getMeanMaxMinFiberLength          ( const vector< vector< Vector > > &i_fibersPoints,
                                                      float                      &o_meanLength,
                                                      float                      &o_maxLength,
                                                      float                      &o_minLength               );
+    bool   getMeanMaxMinFiberLengthNew(       const vector< int > &selectedFibersIndexes,
+                                                    Fibers        *pCurFibers,
+                                                    float                      &o_meanLength,
+                                                    float                      &o_maxLength,
+                                                    float                      &o_minLength                );
     void   getProgressionCurvatureAndTorsion ( const Vector                     &i_point0, 
                                                const Vector                     &i_point1, 
                                                const Vector                     &i_point2, 
@@ -365,6 +372,13 @@ protected:
     bool   getShowFibers                      ();
 
     vector< vector< Vector > >   getSelectedFibersPoints ();
+    
+    // TODO This should be protected
+    vector< int > getSelectedFibersIndexes( Fibers *pFibers );
+    bool          getSelectedFibersInfo( const vector< int > &selectedFibersIdx, 
+                                         Fibers *pFibers,
+                                         vector< int > &pointsCount, 
+                                         vector< vector< Vector > > &fibersPoints );
     
     vector< float >             m_crossSectionsAreas;   // All the cross sections areas value.
     vector< Vector >            m_crossSectionsNormals; // All the cross sections normals value.

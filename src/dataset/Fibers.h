@@ -91,6 +91,18 @@ public:
 	
     void    setFibersLength();
     
+    float   getFiberLength( const int fiberId ) const
+    {
+        if( fiberId < 0 || static_cast< unsigned int >( fiberId ) >= m_length.size() )
+        {
+            return 0.0f;
+        }
+        
+        return m_length[ fiberId ];
+    }
+    
+    bool    getFiberCoordValues( int fiberIndex, vector< Vector > &fiberPoints );
+    
     void    updateFibersFilters();
 	void	updateFibersFilters(int minLength, int maxLength, int minSubsampling, int maxSubsampling);
     vector< bool >  getFilteredFibers();
@@ -200,7 +212,8 @@ private:
     void            createColorArray( const bool colorsLoadedFromFile );
     
     void            resetLinesShown();
-    vector< bool >  getLinesShown( SelectionObject *pSelectionObject );
+    // TODO remove
+    //vector< bool >  getLinesShown( SelectionObject *pSelectionObject );
     void            objectTest(    SelectionObject *pSelectionObject );
     
     void            barycenterTest( int left, int right, int axis );
@@ -210,8 +223,6 @@ private:
     void            drawCrossingFibers();
 
     void            freeArrays();
-
-    bool            getFiberCoordValues( int fiberIndex, vector< Vector > &fiberPoints );
     
     void            setShader();
     void            releaseShader();

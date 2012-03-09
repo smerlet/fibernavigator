@@ -13,6 +13,7 @@
 
 #include "../dataset/Anatomy.h"
 #include "../dataset/Fibers.h"
+#include "../dataset/FibersGroup.h"
 #include "../misc/Algorithms/BSpline.h"
 #include "../misc/Algorithms/ConvexHullIncremental.h"
 #include "../misc/Algorithms/ConvexGrahamHull.h"
@@ -805,25 +806,94 @@ void SelectionObject::drawPolygon( const vector< Vector > &i_polygonPoints )
 ///////////////////////////////////////////////////////////////////////////
 void SelectionObject::calculateGridParams( FibersInfoGridParams &o_gridInfo )
 {
-    vector< vector< Vector > > l_selectedFibersPoints = getSelectedFibersPoints();
+    o_gridInfo.m_count = 0;
+    o_gridInfo.m_meanLength = 0.0f;
+    o_gridInfo.m_maxLength  = 0.0f;
+    o_gridInfo.m_minLength  = std::numeric_limits< float >::max();
+    o_gridInfo.m_meanValue  = 0.0f;
+    o_gridInfo.m_meanCurvature = 0.0f;
+    o_gridInfo.m_meanTorsion   = 0.0f;
+    
+    FibersGroup *pFiberGroup;
+    m_datasetHelper->getFibersGroupDataset( pFiberGroup );
+    
+    int activeFiberSetCount( 0 );
+    
+    for( int fiberSetIdx(0); fiberSetIdx < pFiberGroup->getFibersCount(); ++fiberSetIdx )
+    {
+        Fibers *pCurFibers = pFiberGroup->getFibersSet( fiberSetIdx );
+        if( pCurFibers->getShow() )
+        {
+            vector< int > selectedFibersIdx = getSelectedFibersIndexes( pCurFibers );
+            
+            if( selectedFibersIdx.empty() )
+            {
+                // Do not want to do any processing in this case.
+                continue;
+            }
+
+            o_gridInfo.m_count += selectedFibersIdx.size();
+            
+            float localMeanLength( 0.0f );
+            float localMaxLength(  0.0f );
+            float localMinLength(  0.0f );
+            
+            getMeanMaxMinFiberLengthNew( selectedFibersIdx, pCurFibers, 
+                                         localMeanLength, 
+                                         localMaxLength, 
+                                         localMinLength );
+            
+            o_gridInfo.m_meanLength += localMeanLength;
+            ++activeFiberSetCount;
+            
+            o_gridInfo.m_maxLength = std::max( o_gridInfo.m_maxLength, localMaxLength );
+            o_gridInfo.m_minLength = std::min( o_gridInfo.m_minLength, localMinLength );
+            
+            // Compute mean value
+            vector< int > nbPointsBySelectedFiber;
+            vector< vector < Vector > > pointsBySelectedFiber;
+            
+            getSelectedFibersInfo( selectedFibersIdx, pCurFibers, 
+                                  nbPointsBySelectedFiber, pointsBySelectedFiber );
+            
+            float localMeanValue( 0.0f );
+            
+            getMeanFiberValue( pointsBySelectedFiber, localMeanValue );
+            
+            o_gridInfo.m_meanValue += localMeanValue;
+            
+            // Compute curvature and torsion
+            float localCurvature( 0.0f );
+            float localTorsion(   0.0f );
+            
+            getFibersMeanCurvatureAndTorsion( pointsBySelectedFiber, localCurvature, localTorsion );
+            
+            o_gridInfo.m_meanTorsion += localTorsion;
+            o_gridInfo.m_meanCurvature += localCurvature;
+        }
+    }
+    
+    if( activeFiberSetCount > 0 )
+    {
+        o_gridInfo.m_meanLength    /= activeFiberSetCount;
+        o_gridInfo.m_meanValue     /= activeFiberSetCount;
+        o_gridInfo.m_meanCurvature /= activeFiberSetCount;
+        o_gridInfo.m_meanTorsion   /= activeFiberSetCount;
+    }
+    
+    if( o_gridInfo.m_minLength == std::numeric_limits< float >::max() )
+    {
+        o_gridInfo.m_minLength = 0.0f;
+    }
+    
+    //vector< vector< Vector > > l_selectedFibersPoints = getSelectedFibersPoints();
    
-    // Once the vector is filled up with the points data we can calculate the fibers info grid items.
-    o_gridInfo.m_count = l_selectedFibersPoints.size();
-    getMeanFiberValue               ( l_selectedFibersPoints, 
-                                      o_gridInfo.m_meanValue         );
-    getMeanMaxMinFiberLength        ( l_selectedFibersPoints, 
-                                      o_gridInfo.m_meanLength, 
-                                      o_gridInfo.m_maxLength, 
-                                      o_gridInfo.m_minLength         );
-    //getMeanMaxMinFiberCrossSection  ( l_selectedFibersPoints,
+    /*//getMeanMaxMinFiberCrossSection  ( l_selectedFibersPoints,
     //                                  m_meanFiberPoints,
     //                                  o_gridInfo.m_meanCrossSection, 
     //                                  o_gridInfo.m_maxCrossSection,
-    //                                  o_gridInfo.m_minCrossSection   );
-    getFibersMeanCurvatureAndTorsion( l_selectedFibersPoints, 
-                                      o_gridInfo.m_meanCurvature, 
-                                      o_gridInfo.m_meanTorsion       );
-    //getFiberDispersion              ( o_gridInfo.m_dispersion        );
+    //                                  o_gridInfo.m_minCrossSection   );*/
+    ////getFiberDispersion              ( o_gridInfo.m_dispersion        );
 
 
 }
@@ -942,6 +1012,91 @@ vector< vector< Vector > > SelectionObject::getSelectedFibersPoints(){
     }
 
     return l_selectedFibersPoints;
+}
+
+// TODO after JF's branch: make the param const
+vector< int > SelectionObject::getSelectedFibersIndexes( Fibers *pFibers )
+{
+    vector< bool > filteredFiber = pFibers->getFilteredFibers();
+    
+    SelectionState &curState = getState( pFibers->getName() );
+    
+    vector< bool > branchToUse;
+    if( m_datasetHelper->m_pSelectionTree->getActiveChildrenObjectsCount( this ) > 0 )
+    {
+        branchToUse = curState.m_inBranch;
+    }
+    else // No child.
+    {
+        // If it has a parent
+        SelectionObject *pParentObj = m_datasetHelper->m_pSelectionTree->getParentObject( this );
+        
+        if( pParentObj != NULL )
+        {
+            // TODO this could be optimized
+            SelectionState &parentState = pParentObj->getState( pFibers->getName() );
+            branchToUse.assign( curState.m_inBranch.size(), false );
+
+            bool parentIsNot( pParentObj->getIsNOT() );
+            bool currentIsNot( getIsNOT() );
+            
+            for( unsigned int fiberIdx( 0 ); fiberIdx < curState.m_inBox.size(); ++fiberIdx )
+            {
+                if( !parentIsNot && !currentIsNot )
+                {
+                    branchToUse[ fiberIdx ] = parentState.m_inBox[ fiberIdx ] & curState.m_inBox[ fiberIdx ];
+                }
+                else if( !parentIsNot && currentIsNot )
+                {
+                    branchToUse[ fiberIdx ] = parentState.m_inBox[ fiberIdx ] & !curState.m_inBox[ fiberIdx ];
+                }
+                else if( parentIsNot && !currentIsNot )
+                {
+                    branchToUse[ fiberIdx ] = !parentState.m_inBox[ fiberIdx ] & curState.m_inBox[ fiberIdx ];
+                }
+                else // parentIsNot && currentIsNot
+                {
+                    branchToUse[ fiberIdx ] = !parentState.m_inBox[ fiberIdx ] & !curState.m_inBox[ fiberIdx ];
+                }
+            }
+        }
+        else // No parent, so this is a root object with no child.
+        {
+            // TODO
+        }
+    }
+    
+    vector< int > selectedIndexes;
+    
+    for( unsigned int fiberIdx = 0; fiberIdx < branchToUse.size(); ++fiberIdx )
+    {
+        if( branchToUse[fiberIdx] && !filteredFiber[fiberIdx] )
+        {
+            selectedIndexes.push_back( fiberIdx );
+        }
+    }
+    
+    return selectedIndexes;
+}
+
+bool SelectionObject::getSelectedFibersInfo( const vector< int > &selectedFibersIdx, 
+                                             Fibers *pFibers, 
+                                             vector< int > &pointsCount, 
+                                             vector< vector< Vector > > &fibersPoints )
+
+{
+    pointsCount.assign( selectedFibersIdx.size(), 0 );
+    fibersPoints.assign( selectedFibersIdx.size(), vector< Vector >() );
+    
+    int curItem( 0 );
+    
+    for( vector< int >::const_iterator idxIt( selectedFibersIdx.begin() ); idxIt != selectedFibersIdx.end(); ++idxIt, ++curItem )
+    {
+        pointsCount[ curItem ] = pFibers->getPointsPerLine( *idxIt );
+        pFibers->getFiberCoordValues( *idxIt, fibersPoints[ curItem ] );
+    }
+    
+    return true;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1158,6 +1313,8 @@ bool SelectionObject::getMeanFiberValue( const vector< vector< Vector > > &fiber
 
     unsigned int pointsCount( 0 );
     unsigned int datasetPos ( 0 );
+    
+    vector< float > *pCurFloatDataset = pCurrentAnatomy->getFloatDataset();
 
     for( unsigned int i = 0; i < fibersPoints.size(); ++i )
     {
@@ -1169,7 +1326,7 @@ bool SelectionObject::getMeanFiberValue( const vector< vector< Vector > > &fiber
             
             for (int i(0); i < pCurrentAnatomy->getBands(); i++)
             {
-                computedMeanValue += (* ( pCurrentAnatomy->getFloatDataset() ) )[datasetPos + i];
+                computedMeanValue += (*pCurFloatDataset)[ datasetPos + i ];
             }
 
             ++pointsCount;
@@ -1226,6 +1383,41 @@ bool SelectionObject::getMeanMaxMinFiberLength( const vector< vector< Vector > >
     
     o_meanLength /= i_fibersPoints.size();    
 
+    return true;
+}
+
+
+bool SelectionObject::getMeanMaxMinFiberLengthNew( const vector< int > &selectedFibersIndexes,
+                                                         Fibers        *pCurFibers,
+                                                         float         &meanLength,
+                                                         float         &maxLength,
+                                                         float         &minLength )
+{
+    meanLength = 0.0f;
+    maxLength  = 0.0f;
+    minLength  = numeric_limits<float>::max();
+
+    if( selectedFibersIndexes.empty() )
+    {
+        minLength = 0.0f;
+        return false;
+    }
+    
+    float curFiberLength( 0.0f );
+    
+    for( vector< int >::const_iterator idxIt( selectedFibersIndexes.begin() );
+         idxIt != selectedFibersIndexes.end(); ++idxIt )
+    {
+        curFiberLength = pCurFibers->getFiberLength( *idxIt );
+        
+        meanLength += curFiberLength;
+        
+        maxLength = std::max( maxLength, curFiberLength );
+        minLength = std::min( minLength, curFiberLength );
+    }
+    
+    meanLength /= selectedFibersIndexes.size();
+    
     return true;
 }
 
@@ -1408,33 +1600,35 @@ bool SelectionObject::getFibersMeanCurvatureAndTorsion( const vector< vector< Ve
                                                               float                      &o_meanTorsion )
 {
 
-   o_meanCurvature = 0.0f;
-   o_meanTorsion   = 0.0f;
+    o_meanCurvature = 0.0f;
+    o_meanTorsion   = 0.0f;
 
-   if( i_fiberVector.size() == 0 )
-    return false;
+    if( i_fiberVector.size() == 0 )
+    {
+        return false;
+    }
 
 	//Curvature and torsion are now calculated from mean fiber
-   vector< Vector > meanFiberPoint;
-	getMeanFiber(i_fiberVector, MEAN_FIBER_NB_POINTS, meanFiberPoint);
+    vector< Vector > meanFiberPoint;
+    getMeanFiber(i_fiberVector, MEAN_FIBER_NB_POINTS, meanFiberPoint);
 	getFiberMeanCurvatureAndTorsion(meanFiberPoint, o_meanCurvature, o_meanTorsion );
 
 
 	//Curvature and torsion are now calculated from mean fiber
-   //float l_currentFiberCurvature, l_currentFiberTorsion;
-   //for( unsigned int i = 0; i < i_fiberVector.size(); ++i )
-   //{
-   //    l_currentFiberCurvature = 0.0f;
-   //    l_currentFiberTorsion   = 0.0f;
-   //    getFiberMeanCurvatureAndTorsion( i_fiberVector[i], l_currentFiberCurvature, l_currentFiberTorsion );
-   //    o_meanCurvature += l_currentFiberCurvature;
-   //    o_meanTorsion   += l_currentFiberTorsion;
-   //}
+    //float l_currentFiberCurvature, l_currentFiberTorsion;
+    //for( unsigned int i = 0; i < i_fiberVector.size(); ++i )
+    //{
+    //    l_currentFiberCurvature = 0.0f;
+    //    l_currentFiberTorsion   = 0.0f;
+    //    getFiberMeanCurvatureAndTorsion( i_fiberVector[i], l_currentFiberCurvature, l_currentFiberTorsion );
+    //    o_meanCurvature += l_currentFiberCurvature;
+    //    o_meanTorsion   += l_currentFiberTorsion;
+    //}
 
-   //o_meanCurvature /= i_fiberVector.size();
-   //o_meanTorsion   /= i_fiberVector.size();
+    //o_meanCurvature /= i_fiberVector.size();
+    //o_meanTorsion   /= i_fiberVector.size();
 
-   return true;
+    return true;
 }
 
 
@@ -2011,6 +2205,8 @@ void SelectionObject::SetFiberInfoGridValues()
     
     SelectionObject *pObjToUse( this );
     
+    std::cout << "Setting fiber info grid values for object " << pObjToUse->getName() << std::endl << "1" << std::endl;
+    
     FibersInfoGridParams l_params;
     pObjToUse->calculateGridParams( l_params );
 
@@ -2343,6 +2539,13 @@ void SelectionObject::updatePropertiesSizer()
     m_ptxtName->SetValue( getName() );
     m_ptoggleCalculatesFibersInfo->Enable( getShowFibers() );
     m_pgridfibersInfo->Enable( getShowFibers() && m_ptoggleCalculatesFibersInfo->GetValue() );
+    
+    // Update the statistics, if needed
+    if( m_pgridfibersInfo->IsEnabled() )
+    {
+        SetFiberInfoGridValues();
+    }
+    
     m_ptoggleDisplayMeanFiber->Enable( getShowFibers() );
     m_ptoggleDisplayConvexHull->Enable( getShowFibers() );
     setShowConvexHullOption( m_ptoggleDisplayConvexHull->GetValue() );

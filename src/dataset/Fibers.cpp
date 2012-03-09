@@ -2624,7 +2624,8 @@ void Fibers::updateLinesShown()
 // Return a vector of bool, a value of TRUE indicates that this fiber is inside the selection object passed in argument.
 // A value of false, indicate that this fiber is not inside the selection object.
 ///////////////////////////////////////////////////////////////////////////
-vector< bool > Fibers::getLinesShown( SelectionObject *pSelectionObject )
+// TODO remove
+/*vector< bool > Fibers::getLinesShown( SelectionObject *pSelectionObject )
 {
     if( ! pSelectionObject->isSelectionObject() && ! pSelectionObject->m_sourceAnatomy )
     {
@@ -2669,7 +2670,7 @@ vector< bool > Fibers::getLinesShown( SelectionObject *pSelectionObject )
     }
 
     return m_selected;
-}
+}*/
 
 ///////////////////////////////////////////////////////////////////////////
 // Get points that are inside the selection object and
