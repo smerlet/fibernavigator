@@ -78,6 +78,8 @@ Fibers::~Fibers()
     m_pointArray.clear();
     m_normalArray.clear();
     m_colorArray.clear();
+    
+    m_dh->m_pSelectionTree->notifyStatsNeedUpdating();
 }
 
 bool Fibers::load( wxString filename )
@@ -118,6 +120,12 @@ bool Fibers::load( wxString filename )
 
     /* OcTree points classification */
     m_pOctree = new Octree( 2, m_pointArray, m_countPoints, m_dh );
+    
+    if( res )
+    {
+        m_dh->m_pSelectionTree->notifyStatsNeedUpdating();
+    }
+    
     return res;
 }
 
@@ -3411,11 +3419,14 @@ void Fibers::updateFibersFilters(int minLength, int maxLength, int minSubsamplin
         m_filtered[i] = !( ( i % maxSubsampling ) >= minSubsampling && m_length[i] >= minLength && m_length[i] <= maxLength );
     }
     
+    m_dh->m_pSelectionTree->notifyStatsNeedUpdating();
+    
     //Update stats, mean fiber and convexhull only if an object is selected.
     // TODO do this only when displaying the fiber stats
     if( m_dh->m_lastSelectedObject != NULL )
     {
-        m_dh->m_lastSelectedObject->SetFiberInfoGridValues();
+        // TODO remove. Now handled with lazy evaluation
+        //m_dh->m_lastSelectedObject->SetFiberInfoGridValues();
         m_dh->m_lastSelectedObject->computeMeanFiber();
         m_dh->m_lastSelectedObject->computeConvexHull();
     }
@@ -3655,6 +3666,12 @@ void Fibers::updatePropertiesSizer()
 		}
 	}
 	
+}
+
+bool Fibers::toggleShow()
+{
+    m_dh->m_pSelectionTree->notifyStatsNeedUpdating();
+    return DatasetInfo::toggleShow();
 }
 
 //////////////////////////////////////////////////////////////////////////

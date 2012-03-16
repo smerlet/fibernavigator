@@ -554,6 +554,16 @@ void SelectionTree::removeFiberDataset( const SelectionObject::FiberIdType &fibe
     m_fibersIdAndCount.erase( fiberId );
 }
 
+void SelectionTree::notifyStatsNeedUpdating()
+{
+    SelectionObjectVector objs = getAllObjects();
+    
+    for( SelectionObjectVector::iterator objIt( objs.begin() ); objIt != objs.end(); ++objIt )
+    {
+        (*objIt)->notifyStatsNeedUpdating();
+    }
+}
+
 bool SelectionTree::populateXMLNode( wxXmlNode *pRootNode )
 {
     

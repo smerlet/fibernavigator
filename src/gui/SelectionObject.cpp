@@ -28,6 +28,7 @@
 
 
 SelectionObject::SelectionObject( Vector i_center, Vector i_size, DatasetHelper* i_datasetHelper ):
+    m_statsNeedUpdating( true ),
     m_pLabelAnatomy   ( NULL ),
     m_pCBSelectDataSet( NULL ),
     m_displayCrossSections ( CS_NOTHING   ),
@@ -799,20 +800,20 @@ void SelectionObject::drawPolygon( const vector< Vector > &i_polygonPoints )
 }
 
 ///////////////////////////////////////////////////////////////////////////
+// TODO this comment does not reflect reality.
 // This will push back the coords values in the vectors for all the fibers
 // flagged as m_inBranch and then we will calculate the grid params with this vector.
 //
-// o_gridInfo           : The structure containing the information that we need to calculate.
 ///////////////////////////////////////////////////////////////////////////
-void SelectionObject::calculateGridParams( FibersInfoGridParams &o_gridInfo )
+void SelectionObject::updateStats()
 {
-    o_gridInfo.m_count = 0;
-    o_gridInfo.m_meanLength = 0.0f;
-    o_gridInfo.m_maxLength  = 0.0f;
-    o_gridInfo.m_minLength  = std::numeric_limits< float >::max();
-    o_gridInfo.m_meanValue  = 0.0f;
-    o_gridInfo.m_meanCurvature = 0.0f;
-    o_gridInfo.m_meanTorsion   = 0.0f;
+    m_stats.m_count = 0;
+    m_stats.m_meanLength = 0.0f;
+    m_stats.m_maxLength  = 0.0f;
+    m_stats.m_minLength  = std::numeric_limits< float >::max();
+    m_stats.m_meanValue  = 0.0f;
+    m_stats.m_meanCurvature = 0.0f;
+    m_stats.m_meanTorsion   = 0.0f;
     
     FibersGroup *pFiberGroup;
     m_datasetHelper->getFibersGroupDataset( pFiberGroup );
@@ -832,7 +833,7 @@ void SelectionObject::calculateGridParams( FibersInfoGridParams &o_gridInfo )
                 continue;
             }
 
-            o_gridInfo.m_count += selectedFibersIdx.size();
+            m_stats.m_count += selectedFibersIdx.size();
             
             float localMeanLength( 0.0f );
             float localMaxLength(  0.0f );
@@ -843,24 +844,24 @@ void SelectionObject::calculateGridParams( FibersInfoGridParams &o_gridInfo )
                                          localMaxLength, 
                                          localMinLength );
             
-            o_gridInfo.m_meanLength += localMeanLength;
+            m_stats.m_meanLength += localMeanLength;
             ++activeFiberSetCount;
             
-            o_gridInfo.m_maxLength = std::max( o_gridInfo.m_maxLength, localMaxLength );
-            o_gridInfo.m_minLength = std::min( o_gridInfo.m_minLength, localMinLength );
+            m_stats.m_maxLength = std::max( m_stats.m_maxLength, localMaxLength );
+            m_stats.m_minLength = std::min( m_stats.m_minLength, localMinLength );
             
             // Compute mean value
             vector< int > nbPointsBySelectedFiber;
             vector< vector < Vector > > pointsBySelectedFiber;
             
             getSelectedFibersInfo( selectedFibersIdx, pCurFibers, 
-                                  nbPointsBySelectedFiber, pointsBySelectedFiber );
+                                   nbPointsBySelectedFiber, pointsBySelectedFiber );
             
             float localMeanValue( 0.0f );
             
             getMeanFiberValue( pointsBySelectedFiber, localMeanValue );
             
-            o_gridInfo.m_meanValue += localMeanValue;
+            m_stats.m_meanValue += localMeanValue;
             
             // Compute curvature and torsion
             float localCurvature( 0.0f );
@@ -868,22 +869,22 @@ void SelectionObject::calculateGridParams( FibersInfoGridParams &o_gridInfo )
             
             getFibersMeanCurvatureAndTorsion( pointsBySelectedFiber, localCurvature, localTorsion );
             
-            o_gridInfo.m_meanTorsion += localTorsion;
-            o_gridInfo.m_meanCurvature += localCurvature;
+            m_stats.m_meanTorsion += localTorsion;
+            m_stats.m_meanCurvature += localCurvature;
         }
     }
     
     if( activeFiberSetCount > 0 )
     {
-        o_gridInfo.m_meanLength    /= activeFiberSetCount;
-        o_gridInfo.m_meanValue     /= activeFiberSetCount;
-        o_gridInfo.m_meanCurvature /= activeFiberSetCount;
-        o_gridInfo.m_meanTorsion   /= activeFiberSetCount;
+        m_stats.m_meanLength    /= activeFiberSetCount;
+        m_stats.m_meanValue     /= activeFiberSetCount;
+        m_stats.m_meanCurvature /= activeFiberSetCount;
+        m_stats.m_meanTorsion   /= activeFiberSetCount;
     }
     
-    if( o_gridInfo.m_minLength == std::numeric_limits< float >::max() )
+    if( m_stats.m_minLength == std::numeric_limits< float >::max() )
     {
-        o_gridInfo.m_minLength = 0.0f;
+        m_stats.m_minLength = 0.0f;
     }
     
     //vector< vector< Vector > > l_selectedFibersPoints = getSelectedFibersPoints();
@@ -898,6 +899,10 @@ void SelectionObject::calculateGridParams( FibersInfoGridParams &o_gridInfo )
 
 }
 
+void SelectionObject::notifyStatsNeedUpdating()
+{
+    m_statsNeedUpdating = true;
+}
 
 ///////////////////////////////////////////////////////////////////////////
 // Computes the mean fiber
@@ -1062,7 +1067,7 @@ vector< int > SelectionObject::getSelectedFibersIndexes( Fibers *pFibers )
         }
         else // No parent, so this is a root object with no child.
         {
-            // TODO
+            branchToUse = curState.m_inBox;
         }
     }
     
@@ -1214,11 +1219,16 @@ bool SelectionObject::getMeanFiber( const vector< vector< Vector > > &i_fibersPo
 ///////////////////////////////////////////////////////////////////////////
 bool SelectionObject::getShowFibers()
 {
-    Fibers* l_fibers = NULL;
-    m_datasetHelper->getSelectedFiberDataset( l_fibers );
-    if ( l_fibers == NULL )
-        return false;
-    return l_fibers->getShow();
+    FibersGroup* pFibersGroup( NULL );
+
+    m_datasetHelper->getFibersGroupDataset( pFibersGroup );
+    
+    if( pFibersGroup != NULL )
+    {
+        return pFibersGroup->isOneFiberSetActive();
+    }
+    
+    return false;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2181,6 +2191,8 @@ void SelectionObject::notifyInBoxNeedsUpdating()
     {
         stateIt->second.m_inBoxNeedsUpdating = true;
     }
+    
+    notifyStatsNeedUpdating();
 }
 
 void SelectionObject::FlipNormals()
@@ -2205,24 +2217,29 @@ void SelectionObject::SetFiberInfoGridValues()
     
     SelectionObject *pObjToUse( this );
     
-    std::cout << "Setting fiber info grid values for object " << pObjToUse->getName() << std::endl << "1" << std::endl;
+    if( m_statsNeedUpdating )
+    {
+        pObjToUse->updateStats();
+        
+        m_statsNeedUpdating = false;
+    }
     
-    FibersInfoGridParams l_params;
-    pObjToUse->calculateGridParams( l_params );
+    //FibersInfoGridParams l_params;
+    //pObjToUse->calculateGridParams( l_params );
 
-    m_pgridfibersInfo->SetCellValue( 0,  0, wxString::Format( wxT( "%d" ), l_params.m_count              ) );
-    m_pgridfibersInfo->SetCellValue( 1,  0, wxString::Format( wxT( "%.2f" ), l_params.m_meanValue        ) );
-    m_pgridfibersInfo->SetCellValue( 2,  0, wxString::Format( wxT( "%.2f" ), l_params.m_meanLength       ) );
-    m_pgridfibersInfo->SetCellValue( 3,  0, wxString::Format( wxT( "%.2f" ), l_params.m_minLength        ) );
-    m_pgridfibersInfo->SetCellValue( 4,  0, wxString::Format( wxT( "%.2f" ), l_params.m_maxLength        ) );
+    m_pgridfibersInfo->SetCellValue( 0,  0, wxString::Format( wxT( "%d" ), m_stats.m_count              ) );
+    m_pgridfibersInfo->SetCellValue( 1,  0, wxString::Format( wxT( "%.2f" ), m_stats.m_meanValue        ) );
+    m_pgridfibersInfo->SetCellValue( 2,  0, wxString::Format( wxT( "%.2f" ), m_stats.m_meanLength       ) );
+    m_pgridfibersInfo->SetCellValue( 3,  0, wxString::Format( wxT( "%.2f" ), m_stats.m_minLength        ) );
+    m_pgridfibersInfo->SetCellValue( 4,  0, wxString::Format( wxT( "%.2f" ), m_stats.m_maxLength        ) );
     //m_pgridfibersInfo->SetCellValue( 5,  0, wxString::Format( wxT( "%.2f" ), l_params.m_meanCrossSection ) );
     //if ( l_params.m_minCrossSection > l_params.m_count )
     //    m_pgridfibersInfo->SetCellValue( 6,  0, wxT( "INF") );
     //else    
     //    m_pgridfibersInfo->SetCellValue( 6,  0, wxString::Format( wxT( "%.2f" ), l_params.m_minCrossSection  ) );
       //    m_pgridfibersInfo->SetCellValue( 5,  0, wxString::Format( wxT( "%.2f" ), l_params.m_maxCrossSection  ) );
-    m_pgridfibersInfo->SetCellValue( 5,  0, wxString::Format( wxT( "%.5f" ), l_params.m_meanCurvature    ) );
-    m_pgridfibersInfo->SetCellValue( 6,  0, wxString::Format( wxT( "%.5f" ), l_params.m_meanTorsion      ) );
+    m_pgridfibersInfo->SetCellValue( 5,  0, wxString::Format( wxT( "%.5f" ), m_stats.m_meanCurvature    ) );
+    m_pgridfibersInfo->SetCellValue( 6,  0, wxString::Format( wxT( "%.5f" ), m_stats.m_meanTorsion      ) );
     //m_pgridfibersInfo->SetCellValue( 10, 0, wxString::Format( wxT( "%.2f" ), l_params.m_dispersion       ) );
 }
 

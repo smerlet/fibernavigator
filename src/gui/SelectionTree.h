@@ -53,6 +53,9 @@ public:
     bool addFiberDataset(    const SelectionObject::FiberIdType &fiberId, const int fibersCount );
     void removeFiberDataset( const SelectionObject::FiberIdType &fiberId );
     
+    // Methods related to stats computation
+    void notifyStatsNeedUpdating();
+    
     // Methods related to saving and loading.
     bool populateXMLNode( wxXmlNode *pRootNode );
     

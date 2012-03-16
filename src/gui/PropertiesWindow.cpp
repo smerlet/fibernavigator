@@ -1919,7 +1919,8 @@ void PropertiesWindow::AddSelectionObjectToSelectionTree( SelectionObject *pSelO
 {
     wxTreeItemId newSelectionObjectId;
     
-    if( m_mainFrame->treeSelectedNew( parentTreeId ) == TYPE_SELECTION_MASTER )
+    if( m_mainFrame->treeSelectedNew( parentTreeId ) == TYPE_SELECTION_MASTER ||
+        m_mainFrame->treeSelectedNew( parentTreeId ) == TYPE_INVALID )
     {
         pSelObj->setIsMaster( true );
 

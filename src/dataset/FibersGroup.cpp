@@ -74,6 +74,19 @@ Fibers* FibersGroup::getFibersSet(int num)
 	return pFibers;
 }
 
+bool FibersGroup::isOneFiberSetActive()
+{
+    for( int i( 0 ); i < static_cast< int >( m_fibersSets.size() ); ++i )
+	{
+		if( m_fibersSets[i]->getShow() )
+        {
+            return true;
+        }
+	}
+    
+    return false;
+}
+
 void FibersGroup::saveDMRI( wxString filename )
 {
 	ofstream myfile;

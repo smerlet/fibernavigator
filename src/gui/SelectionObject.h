@@ -279,7 +279,8 @@ protected:
     ******************************************************************************************/
 public:
     // Functions
-    void   calculateGridParams               (       FibersInfoGridParams       &io_gridInfo               );
+    void   updateStats                       ();
+    void   notifyStatsNeedUpdating           ();
     void   computeMeanFiber                  ();
     void   computeConvexHull                 ();
     void   getProgressionCurvature           ( const Vector                     &i_point0, 
@@ -300,6 +301,7 @@ public:
     void   updateMeanFiberOpacity             ();
     void   UpdateMeanValueTypeBox             ();
     void   updateConvexHullOpacity            ();
+    
 protected:
     void   drawCrossSections                 ();
     void   drawCrossSectionsPolygons         ();
@@ -373,7 +375,6 @@ protected:
 
     vector< vector< Vector > >   getSelectedFibersPoints ();
     
-    // TODO This should be protected
     vector< int > getSelectedFibersIndexes( Fibers *pFibers );
     bool          getSelectedFibersInfo( const vector< int > &selectedFibersIdx, 
                                          Fibers *pFibers,
@@ -386,6 +387,9 @@ protected:
     unsigned int                m_maxCrossSectionIndex; // Index of the max cross section of m_crossSectionsPoints.
     vector< Vector >            m_meanFiberPoints;      // The points representing the mean fiber.
     unsigned int                m_minCrossSectionIndex; // Index of the min cross section of m_crossSectionsPoints.
+    
+    FibersInfoGridParams        m_stats;                // The stats for this box.
+    bool                        m_statsNeedUpdating;    // Will be used to check if the stats need to be updated.
     /******************************************************************************************
     * END of the functions/variables related to the fiber info calculation.
     *****************************************************************************************/

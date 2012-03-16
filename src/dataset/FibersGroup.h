@@ -36,6 +36,8 @@ public:
 	Fibers* getFibersSet(int num);
 
 	int		getFibersCount() { return (int)m_fibersSets.size(); };
+    
+    bool    isOneFiberSetActive();
 
 	bool	isOneBtnToggled()
 	{

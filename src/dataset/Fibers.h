@@ -198,6 +198,9 @@ public:
 
     void    toggleCrossingFibers() { m_useCrossingFibers = !m_useCrossingFibers; }
     void    updateCrossingFibersThickness();
+    
+    // Inherited from DatasetInfo
+    bool    toggleShow();
 
 private:
     void            colorWithTorsion(     float *pColorData );
