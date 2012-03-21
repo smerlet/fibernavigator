@@ -143,11 +143,19 @@ SelectionVOI::SelectionVOI( DatasetHelper *pDH, Anatomy *pSourceAnatomy, const f
 ///////////////////////////////////////////////////////////////////////////
 void SelectionVOI::drawObject( GLfloat * pColor )
 {
-    // Do not use the suggested color.
-    // For the moment a selection VOI will always be red.
-    glColor4f( 1.0f, 0.0f, 0.0f, pColor[3] );
+    wxColour objCol = getColor();
     
-    //m_isosurface->draw();
+    if( objCol.IsOk() )
+    {
+        glColor4f( objCol.Red() / 255.0f, objCol.Green() / 255.0f, 
+                   objCol.Blue() / 255.0f, objCol.Alpha() / 255.0f );
+    }
+    else
+    {
+        // When no color has been defined, we use a default red.
+        glColor4f( 1.0f, 0.0f, 0.0f, pColor[3] );
+    }
+    
     m_pIsoSurface->draw();
     /*glColor4f( i_color[0], i_color[1], i_color[2], i_color[3] );
     
@@ -369,6 +377,8 @@ bool SelectionVOI::isPointInside( const float xPos, const float yPos, const floa
 void SelectionVOI::createPropertiesSizer( PropertiesWindow *pParent )
 {
     SelectionObject::createPropertiesSizer( pParent );
+    
+    m_pbtnSelectColor->Enable( true );
     
     m_propertiesSizer->AddSpacer( 8 );
     

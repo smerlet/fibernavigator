@@ -394,6 +394,9 @@ protected:
     * END of the functions/variables related to the fiber info calculation.
     *****************************************************************************************/
 
+protected:
+    wxBitmapButton  *m_pbtnSelectColor;
+
 private:
     wxTextCtrl      *m_ptxtName;
     wxButton        *m_pbtnChangeName;
@@ -420,7 +423,6 @@ private:
     wxButton        *m_pbtnDisplayDispersionTube;
     wxButton        *m_pbtnSetAsDistanceAnchor;
     wxButton        *m_pbtnFlipNormal;
-    wxBitmapButton  *m_pbtnSelectColor;
     wxButton        *m_pbtnSelectColorFibers;
     wxStaticText    *m_pLabelAnatomy;
     wxChoice        *m_pCBSelectDataSet;

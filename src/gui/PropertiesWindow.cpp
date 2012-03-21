@@ -1535,13 +1535,8 @@ void PropertiesWindow::OnToggleAndNot( wxCommandEvent& WXUNUSED(event) )
 
 void PropertiesWindow::OnColorRoi( wxCommandEvent& WXUNUSED(event) )
 {
-    // TODO SELECTION TREE
     if( ! m_mainFrame->m_pDatasetHelper->m_theScene )
         return;
-
-    // Get the currently selected object.
-    wxTreeItemId l_selectionObjectTreeId = m_mainFrame->m_pTreeWidget->GetSelection();
-    SelectionObject* l_selectionObject = (SelectionObject*)( m_mainFrame->m_pTreeWidget->GetItemData( l_selectionObjectTreeId ) );
 
     wxColourData l_colorData;
 
@@ -1579,8 +1574,14 @@ void PropertiesWindow::OnColorRoi( wxCommandEvent& WXUNUSED(event) )
     }
     else
         return;
+    
+    wxTreeItemId l_treeBoxId = m_mainFrame->m_pTreeWidget->GetSelection();
+    
+    CustomTreeItem *pTreeItem = reinterpret_cast< CustomTreeItem* >( m_mainFrame->m_pTreeWidget->GetItemData( l_treeBoxId ) );
 
-    l_selectionObject->setColor( l_color );
+    SelectionObject *pSelObject = m_mainFrame->m_pDatasetHelper->m_pSelectionTree->getObject( pTreeItem->getId() );
+    
+    pSelObject->setColor( l_color );
 
     m_mainFrame->refreshAllGLWidgets();
 }
