@@ -32,6 +32,9 @@ public:
     // Checks if a point is inside the VOI.
     bool isPointInside( const float xPos, const float yPos, const float zPos ) const;
     
+    // Methods related to loading and saving.
+    virtual wxString getTypeTag() const;
+    
     virtual void createPropertiesSizer( PropertiesWindow *pParent );
     virtual void updatePropertiesSizer();
     

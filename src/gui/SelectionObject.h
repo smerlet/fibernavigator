@@ -26,6 +26,7 @@
 #include "../misc/IsoSurface/Vector.h"
 
 #include <wx/grid.h>
+#include "wx/xml/xml.h"
 
 #include <GL/glew.h>
 
@@ -81,6 +82,7 @@ class SelectionObject : public SceneObject, public wxTreeItemData
 {
 public :
     SelectionObject ( Vector i_center, Vector i_size, DatasetHelper* i_datasetHelper );
+    SelectionObject( DatasetHelper *pDH );
     virtual ~SelectionObject();
 
     virtual hitResult hitTest( Ray* i_ray ) = 0;
@@ -199,6 +201,12 @@ public :
     bool            addFiberDataset(    const FiberIdType &fiberId );
     void            removeFiberDataset( const FiberIdType &fiberId );
     SelectionState& getState(           const FiberIdType &fiberId );
+    
+    // Methods related to saving and loading.
+            bool populateXMLNode( wxXmlNode *pCurNode );
+    virtual bool loadFromXMLNode( wxXmlNode *pSelObjNode );
+    
+    virtual wxString getTypeTag() const;
 
     //Distance coloring setup
     bool        IsUsedForDistanceColoring() const;
@@ -211,6 +219,7 @@ public :
     DatasetHelper* m_datasetHelper;
     vector< bool > m_inBox;
     vector< bool > m_inBranch;
+    // TODO this should be removed
     Anatomy*       m_sourceAnatomy;
     bool          m_boxMoved;
     bool          m_boxResized;
@@ -243,6 +252,7 @@ protected :
     bool            m_isSelected;
     bool            m_isVisible;
     wxString        m_name;
+    // TODO this should be removed
     ObjectType      m_objectType;
     Vector          m_size;
     int             m_stepSize;

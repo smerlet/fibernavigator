@@ -69,7 +69,55 @@ SelectionObject::SelectionObject( Vector i_center, Vector i_size, DatasetHelper*
     //Distance coloring
     m_DistColoring          = false;
 
+    // TODO this should not exist anymore
     m_inBox.resize( m_datasetHelper->m_countFibers, false );
+}
+
+SelectionObject::SelectionObject( DatasetHelper *pDH )
+    : m_datasetHelper( pDH ),
+      m_sourceAnatomy( NULL ),
+      m_boxMoved( false ),
+      m_boxResized( false ),
+      m_center( Vector( 0.0f, 0.0f, 0.0f ) ),
+      m_color( wxColour( 240, 30, 30 ) ),
+      m_colorChanged( false ),
+      m_fiberColor( wxColour( 240, 30, 30 ) ),
+      m_mustUpdateConvexHull( false ),
+      m_gfxDirty( false ),
+      m_handleRadius( 3.0f ),
+      m_isActive( true ),
+      m_isDirty( true ),
+      m_isLockedToCrosshair( false ),
+      m_isMaster( false ),
+      m_isNOT( false ),
+      m_isosurface( NULL ),
+      m_isSelected( false ),
+      m_isVisible( true ),
+      m_name( wxT( "object" ) ),
+      m_objectType( DEFAULT_TYPE ),
+      m_size( Vector( 0.0f, 0.0f, 0.0f ) ),
+      m_stepSize( 9 ),
+      m_threshold( 0.0f ),
+      m_treeId( NULL ),
+      m_DistColoring( false ),
+      m_convexHullColor( wxColour( 0, 0, 0, 0 ) ),
+      m_convexHullOpacity( 1.0f ),
+      m_meanFiberColor( wxColour( 0, 0, 0, 0 ) ),
+      m_meanFiberOpacity( 1.0f ),
+      m_minX( 0.0f ),
+      m_minY( 0.0f ),
+      m_minZ( 0.0f ),
+      m_maxX( 0.0f ),
+      m_maxY( 0.0f ),
+      m_maxZ( 0.0f ),
+      m_statsNeedUpdating( true ),
+      m_pLabelAnatomy   ( NULL ),
+      m_pCBSelectDataSet( NULL ),
+      m_displayCrossSections ( CS_NOTHING ),
+      m_displayDispersionCone( DC_NOTHING )
+{
+    hitResult hr = { false, 0.0f, 0, NULL };
+    m_hitResult = hr;
 }
 
 SelectionObject::~SelectionObject( )
@@ -2182,6 +2230,212 @@ void SelectionObject::removeFiberDataset( const FiberIdType &fiberId )
 SelectionObject::SelectionState& SelectionObject::getState( const FiberIdType &fiberId )
 {
     return m_selectionStates[ fiberId ];
+}
+
+bool SelectionObject::populateXMLNode( wxXmlNode *pCurNode )
+{
+    // Populate it.
+    wxXmlProperty *pTypeProperty = new wxXmlProperty( wxT( "type" ), getTypeTag() );
+    wxXmlProperty *pNameProperty = new wxXmlProperty( wxT( "name" ), getName(), pTypeProperty );
+    
+    pCurNode->AddProperty( pNameProperty );
+    
+    wxXmlNode *pStateNode = new wxXmlNode( pCurNode, wxXML_ELEMENT_NODE, wxT( "state" ) );    
+    wxXmlProperty *pPropActive  = new wxXmlProperty( wxT( "active" ), getIsActive() ? wxT( "yes" ) : wxT( "no" ) );
+    wxXmlProperty *pPropVisible = new wxXmlProperty( wxT( "visible" ), getIsVisible() ? wxT( "yes" ) : wxT( "no" ) );
+    wxXmlProperty *pPropIsNot   = new wxXmlProperty( wxT( "isNot" ), getIsNOT() ? wxT( "yes" ) : wxT( "no" ) );
+    
+    pPropActive->SetNext( pPropVisible );
+    pPropVisible->SetNext( pPropIsNot );
+    
+    pStateNode->SetProperties( pPropActive );
+
+    // Center
+    wxXmlNode *pCenterNode = new wxXmlNode( NULL, wxXML_ELEMENT_NODE, wxT( "center" ) );
+    wxXmlProperty *pPropX  = new wxXmlProperty( wxT( "x" ), wxString::Format( wxT( "%f" ), getCenter().x ) );
+    wxXmlProperty *pPropY  = new wxXmlProperty( wxT( "y" ), wxString::Format( wxT( "%f" ), getCenter().y ) );
+    wxXmlProperty *pPropZ  = new wxXmlProperty( wxT( "z" ), wxString::Format( wxT( "%f" ), getCenter().z ) );
+
+    pPropX->SetNext( pPropY );
+    pPropY->SetNext( pPropZ );
+    
+    pCenterNode->AddProperty( pPropX );
+    pStateNode->SetNext( pCenterNode );
+     
+    // Size
+    wxXmlNode *pSizeNode = new wxXmlNode( NULL, wxXML_ELEMENT_NODE, wxT( "size" ) );
+    pPropX = new wxXmlProperty( wxT( "x" ), wxString::Format( wxT( "%f" ), getSize().x ) );
+    pPropY = new wxXmlProperty( wxT( "y" ), wxString::Format( wxT( "%f" ), getSize().y ) );
+    pPropZ = new wxXmlProperty( wxT( "z" ), wxString::Format( wxT( "%f" ), getSize().z ) );
+    
+    pPropX->SetNext( pPropY );
+    pPropY->SetNext( pPropZ );
+
+    pSizeNode->AddProperty( pPropX );
+    pCenterNode->SetNext( pSizeNode );
+    
+    // Color
+    wxXmlNode *pColorNode      = new wxXmlNode( NULL, wxXML_ELEMENT_NODE, wxT( "color" ) );
+    wxXmlProperty *pColorRed   = new wxXmlProperty( wxT( "red" ),   wxT( "0" ) );
+    wxXmlProperty *pColorGreen = new wxXmlProperty( wxT( "green" ), wxT( "0" ) );
+    wxXmlProperty *pColorBlue  = new wxXmlProperty( wxT( "blue" ),  wxT( "0" ) );
+    wxXmlProperty *pColorAlpha = new wxXmlProperty( wxT( "alpha" ), wxT( "0" ) );
+    
+    wxColour curColor = getColor();
+    
+    if( curColor.IsOk() )
+    {
+        pColorRed->SetValue(   wxString::Format( wxT("%d"), curColor.Red()   ) );
+        pColorGreen->SetValue( wxString::Format( wxT("%d"), curColor.Green() ) );
+        pColorBlue->SetValue(  wxString::Format( wxT("%d"), curColor.Blue()  ) );
+        pColorAlpha->SetValue( wxString::Format( wxT("%d"), curColor.Alpha() ) );
+    }
+    
+    pColorRed->SetNext( pColorGreen );
+    pColorGreen->SetNext( pColorBlue );
+    pColorBlue->SetNext( pColorAlpha );
+    
+    pColorNode->SetProperties( pColorRed );
+    pSizeNode->SetNext( pColorNode );
+    
+    // Fibers color
+    wxXmlNode *pFibersColorNode = new wxXmlNode( NULL, wxXML_ELEMENT_NODE, wxT( "fibers_color" ) );
+    pColorRed   = new wxXmlProperty( wxT( "red" ),   wxT( "0" ) );
+    pColorGreen = new wxXmlProperty( wxT( "green" ), wxT( "0" ) );
+    pColorBlue  = new wxXmlProperty( wxT( "blue" ),  wxT( "0" ) );
+    pColorAlpha = new wxXmlProperty( wxT( "alpha" ), wxT( "0" ) );
+    
+    curColor = getFiberColor();
+    
+    if( curColor.IsOk() )
+    {
+        pColorRed->SetValue(   wxString::Format( wxT("%d"), curColor.Red()   ) );
+        pColorGreen->SetValue( wxString::Format( wxT("%d"), curColor.Green() ) );
+        pColorBlue->SetValue(  wxString::Format( wxT("%d"), curColor.Blue()  ) );
+        pColorAlpha->SetValue( wxString::Format( wxT("%d"), curColor.Alpha() ) );
+    }
+    
+    pColorRed->SetNext( pColorGreen );
+    pColorGreen->SetNext( pColorBlue );
+    pColorBlue->SetNext( pColorAlpha );
+    
+    pFibersColorNode->SetProperties( pColorRed );
+    pColorNode->SetNext( pFibersColorNode );
+
+    return true;
+}
+
+bool SelectionObject::loadFromXMLNode( wxXmlNode *pSelObjNode )
+{
+    if( pSelObjNode->HasProp( wxT( "name" ) ) )
+    {
+        setName( pSelObjNode->GetPropVal( wxT( "name" ), wxT( "object" ) ) );
+    }
+    
+    /*wxXmlNode* l_boxNode = l_child->GetChildren();
+     wxTreeItemId l_currentMasterId;
+     
+     wxString l_name, l_type, l_active, l_visible, l_isBox;
+     double cx, cy, cz, ix, iy, iz;
+     double _cx, _cy, _cz, _ix, _iy, _iz;
+     cx = cy = cz = ix = iy = iz = 0;
+     _cx = _cy = _cz = _ix = _iy = _iz = 0;
+     
+     while( l_boxNode )
+     {
+     wxXmlNode* l_infoNode = l_boxNode->GetChildren();
+     while( l_infoNode )
+     {
+     if( l_infoNode->GetName() == wxT( "status" ) )
+     {
+     l_type    = l_infoNode->GetPropVal( wxT( "type" ),    wxT( "MASTER" ) );
+     l_active  = l_infoNode->GetPropVal( wxT( "active" ),  wxT( "yes" ) );
+     l_visible = l_infoNode->GetPropVal( wxT( "visible" ), wxT( "yes" ) );
+     l_isBox   = l_infoNode->GetPropVal( wxT( "isBox" ), wxT( "yes" ) );
+     
+     }
+     if( l_infoNode->GetName() == wxT( "name" ) )
+     {
+     l_name = l_infoNode->GetPropVal( wxT( "string" ), wxT( "object" ) );
+     
+     }
+     if( l_infoNode->GetName() == wxT( "size" ) )
+     {
+     wxString sx = l_infoNode->GetPropVal( wxT( "x" ), wxT( "0.0" ) );
+     wxString sy = l_infoNode->GetPropVal( wxT( "y" ), wxT( "0.0" ) );
+     wxString sz = l_infoNode->GetPropVal( wxT( "z" ), wxT( "0.0" ) );
+     
+     sx.ToDouble( &_ix );
+     sy.ToDouble( &_iy );
+     sz.ToDouble( &_iz );
+     }
+     if( l_infoNode->GetName() == wxT( "center" ) )
+     {
+     wxString sx = l_infoNode->GetPropVal( wxT( "x" ), wxT( "0.0" ) );
+     wxString sy = l_infoNode->GetPropVal( wxT( "y" ), wxT( "0.0" ) );
+     wxString sz = l_infoNode->GetPropVal( wxT( "z" ), wxT( "0.0" ) );
+     
+     sx.ToDouble( &_cx );
+     sy.ToDouble( &_cy );
+     sz.ToDouble( &_cz );
+     }
+     
+     l_infoNode = l_infoNode->GetNext();
+     }
+     
+     Vector l_vc( _cx, _cy, _cz );
+     Vector l_vs( _ix, _iy, _iz );
+     
+     // get selected l_anatomy dataset
+     long l_item = m_mainFrame->m_pListCtrl->GetNextItem( -1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED );
+     if( l_item == -1 )
+     return false;
+     
+     //DatasetInfo* l_info = (DatasetInfo*) m_mainFrame->m_listCtrl->GetItemData( l_item );
+     //if( l_info->getType() > OVERLAY )
+     //    return false;
+     SelectionObject* l_selectionObject;
+     if( l_isBox == _T( "yes" ) )
+     l_selectionObject = new SelectionBox( l_vc, l_vs, this );
+     else
+     l_selectionObject = new SelectionEllipsoid( l_vc, l_vs, this );
+     
+     l_selectionObject->setName( l_name );
+     l_selectionObject->setIsActive ( l_active  == _T( "yes" ) );
+     l_selectionObject->setIsVisible( l_visible == _T( "yes" ) );
+     
+     if( l_type == wxT( "MASTER" ) )
+     {
+     l_selectionObject->setIsMaster( true );
+     l_currentMasterId = m_mainFrame->m_pTreeWidget->AppendItem( m_mainFrame->m_tSelectionObjectsId, l_selectionObject->getName(), 0, -1, l_selectionObject );
+     m_mainFrame->m_pTreeWidget->EnsureVisible( l_currentMasterId );
+     m_mainFrame->m_pTreeWidget->SetItemImage( l_currentMasterId, l_selectionObject->getIcon() );
+     m_mainFrame->m_pTreeWidget->SetItemBackgroundColour( l_currentMasterId, *wxCYAN );
+     l_selectionObject->setTreeId( l_currentMasterId );
+     }
+     else
+     {
+     l_selectionObject->setIsNOT( l_type == _T( "NOT" ) );
+     wxTreeItemId boxId = m_mainFrame->m_pTreeWidget->AppendItem( l_currentMasterId, l_selectionObject->getName(), 0, -1, l_selectionObject );
+     m_mainFrame->m_pTreeWidget->EnsureVisible( boxId );
+     m_mainFrame->m_pTreeWidget->SetItemImage( boxId, l_selectionObject->getIcon() );
+     
+     if( l_selectionObject->getIsNOT() )
+     m_mainFrame->m_pTreeWidget->SetItemBackgroundColour( boxId, *wxRED );
+     else
+     m_mainFrame->m_pTreeWidget->SetItemBackgroundColour( boxId, *wxGREEN );
+     
+     l_selectionObject->setTreeId( boxId );
+     }
+     l_boxNode = l_boxNode->GetNext();
+     }*/
+
+    return true;
+}
+
+wxString SelectionObject::getTypeTag() const
+{
+    return wxT( "base" );
 }
 
 void SelectionObject::notifyInBoxNeedsUpdating()

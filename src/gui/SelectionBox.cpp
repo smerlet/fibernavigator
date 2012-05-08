@@ -51,6 +51,10 @@ SelectionBox::SelectionBox( DatasetHelper* i_datasetHelper, Anatomy* i_anatomy )
    m_sourceAnatomy = i_anatomy;
 }
 
+SelectionBox::SelectionBox( DatasetHelper *pDH )
+    : SelectionObject( pDH )
+{}
+
 ///////////////////////////////////////////////////////////////////////////
 // Destructor
 ///////////////////////////////////////////////////////////////////////////
@@ -353,6 +357,13 @@ hitResult SelectionBox::hitTest( Ray* i_ray )
 
     return hr;
 }
+
+wxString SelectionBox::getTypeTag() const
+{
+    return wxT( "selectionBox" );
+}
+
+//bool SelectionBox::loadFromXMLNode( wxXmlNode *pSelObjNode )
 
 void SelectionBox::createPropertiesSizer(PropertiesWindow *parent)
 {

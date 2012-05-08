@@ -8,6 +8,8 @@
 
 #include "../dataset/Fibers.h"
 #include "../dataset/Octree.h"
+#include "../gui/SelectionBox.h"
+#include "../gui/SelectionEllipsoid.h"
 
 #include <algorithm>
 
@@ -332,6 +334,129 @@ int SelectionTree::SelectionTreeNode::getId() const
     return m_nodeId;
 }
 
+bool SelectionTree::SelectionTreeNode::populateXMLNode( wxXmlNode *pParentNode )
+{
+    wxXmlNode *pSelObjNode( NULL );
+    
+    if( m_pSelObject != NULL )
+    {
+        // Check if the parent node already has children
+        wxXmlNode *pCurChild = pParentNode->GetChildren();
+        wxXmlNode *pNextChild( NULL );
+
+        // Iterate over all children, to find the last.
+
+        if( pCurChild != NULL )
+        {
+            pNextChild = pCurChild->GetNext();
+            
+            while( pNextChild != NULL )
+            {
+                pCurChild = pNextChild;
+                pNextChild = pCurChild->GetNext();
+            }
+        }
+                
+        // Create node
+        pSelObjNode = new wxXmlNode( NULL, wxXML_ELEMENT_NODE, wxT( "selection_object" ) );
+        
+        m_pSelObject->populateXMLNode( pSelObjNode );
+        
+        pParentNode->InsertChildAfter( pSelObjNode, pCurChild );
+    }
+    
+    if( hasChildren() )
+    {
+        // Create "children" node
+        wxXmlNode *pChildNode( pParentNode );
+        
+        // The root object is the only SelectionTreeNode which is still valid
+        // without a Selection Object
+        if( pSelObjNode != NULL )
+        {
+            pChildNode = new wxXmlNode( NULL, wxXML_ELEMENT_NODE, wxT( "children_objects" ) );
+            
+            // Check if the parent node already has children
+            wxXmlNode *pCurChild = pSelObjNode->GetChildren();
+            wxXmlNode *pNextChild( NULL );
+            
+            // Iterate over all children, to find the last.
+            
+            if( pCurChild != NULL )
+            {
+                pNextChild = pCurChild->GetNext();
+                
+                while( pNextChild != NULL )
+                {
+                    pCurChild = pNextChild;
+                    pNextChild = pCurChild->GetNext();
+                }
+            }
+
+            pCurChild->SetNext( pChildNode );
+        }
+        
+        // Call this method for each child
+        for( unsigned int childIdx( 0 ); childIdx < m_children.size(); ++childIdx )
+        {
+            m_children[ childIdx ]->populateXMLNode( pChildNode );
+        }
+    }
+    
+    return true;
+}
+
+// This assumes that the selection tree has been emptied.
+bool SelectionTree::loadFromXMLNode( wxXmlNode *pRootSelObjNode, DatasetHelper *pDH )
+{
+    wxXmlNode *pRootChildNode = pRootSelObjNode->GetChildren();
+    
+    while( pRootChildNode != NULL )
+    {
+        // Check if valid selection object node.
+        if( !pRootChildNode->HasProp( wxT( "name" ) ) || !pRootChildNode->HasProp( wxT( "type" ) ) )
+        {
+            // TODO, how do we react if that is not the case?
+        }
+        
+        // Get the type.
+        wxString selObjType = pRootChildNode->GetPropVal( wxT( "type" ), wxT( "invalid" ) );
+        
+        SelectionObject *pNewSelObj( NULL );
+        if( selObjType == "selectionBox" )
+        {
+            pNewSelObj = new SelectionBox( pDH );
+        }
+        else if( selObjType == "selectionEllipsoid" )
+        {
+            pNewSelObj = new SelectionEllipsoid( pDH );
+        }
+        else if( selObjType == "selectionVOI" )
+        {
+            // TODO implement
+        }
+        
+        if( pNewSelObj != NULL )
+        {
+            // TODO check return value
+            if( pNewSelObj->loadFromXMLNode( pRootChildNode ) )
+            {
+                addChildrenObject( -1, pNewSelObj );
+                // TODO add to the tree widget
+            }
+            else
+            {
+                delete pNewSelObj;
+                pNewSelObj = NULL;
+            }
+        }
+        
+        pRootChildNode = pRootChildNode->GetNext();
+    }
+    
+    return true;
+}
+
 SelectionTree::SelectionTreeNode::~SelectionTreeNode()
 {
     // TODO delete selection object. Ownership should be transferred to the selection tree.
@@ -564,10 +689,14 @@ void SelectionTree::notifyStatsNeedUpdating()
     }
 }
 
-bool SelectionTree::populateXMLNode( wxXmlNode *pRootNode )
+bool SelectionTree::populateXMLNode( wxXmlNode *pRootSelObjNode )
 {
+    if( !m_pRootNode->hasChildren() )
+    {
+        return true;
+    }
     
-    return true;
+    return m_pRootNode->populateXMLNode( pRootSelObjNode );
 }
 
 SelectionTree::~SelectionTree()

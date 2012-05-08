@@ -57,7 +57,8 @@ public:
     void notifyStatsNeedUpdating();
     
     // Methods related to saving and loading.
-    bool populateXMLNode( wxXmlNode *pRootNode );
+    bool populateXMLNode( wxXmlNode *pRootSelObjNode );
+    bool loadFromXMLNode( wxXmlNode *pRootSelObjNode, DatasetHelper *pDH );
     
 private:
     class SelectionTreeNode
@@ -92,6 +93,8 @@ private:
         vector< bool > combineChildrenFiberStates( const SelectionObject::FiberIdType &fiberId ) const;
         
         int getId() const;
+        
+        bool populateXMLNode( wxXmlNode *pParentNode );
         
     private:
         SelectionTreeNode();    // Disable default constructor.

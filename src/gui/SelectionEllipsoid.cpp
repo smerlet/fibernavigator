@@ -27,6 +27,15 @@ SelectionEllipsoid::SelectionEllipsoid( Vector i_center, Vector i_size, DatasetH
     update();
 }
 
+SelectionEllipsoid::SelectionEllipsoid( DatasetHelper *pDH )
+    : SelectionObject( pDH )
+{
+    setName( wxT( "ellipsoid" ) );
+    m_objectType = ELLIPSOID_TYPE;
+
+    update();
+}
+
 ///////////////////////////////////////////////////////////////////////////
 // Destructor
 ///////////////////////////////////////////////////////////////////////////
@@ -236,6 +245,11 @@ hitResult SelectionEllipsoid::hitTest( Ray* i_ray )
     m_hitResult = hr;
 
     return hr;
+}
+
+wxString SelectionEllipsoid::getTypeTag() const
+{
+    return wxT( "selectionEllipsoid" );
 }
 
 ///////////////////////////////////////////////////////////////////////////

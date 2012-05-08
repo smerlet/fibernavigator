@@ -916,7 +916,8 @@ bool DatasetHelper::loadScene( const wxString i_fileName )
         }
         else if( l_child->GetName() == wxT( "selection_objects" ) )
         {
-            wxXmlNode* l_boxNode = l_child->GetChildren();
+            m_pSelectionTree->loadFromXMLNode( l_child, this );
+            /*wxXmlNode* l_boxNode = l_child->GetChildren();
             wxTreeItemId l_currentMasterId;
 
             wxString l_name, l_type, l_active, l_visible, l_isBox;
@@ -1012,7 +1013,7 @@ bool DatasetHelper::loadScene( const wxString i_fileName )
                     l_selectionObject->setTreeId( boxId );
                 }
                 l_boxNode = l_boxNode->GetNext();
-            }
+            }*/
         }
         l_child = l_child->GetNext();
     }
@@ -1080,49 +1081,9 @@ void DatasetHelper::save( const wxString i_fileName )
     }
 
     // TODO Selection SAVE modify this
-    SelectionObject* l_currentSelectionObject;
-    std::vector< std::vector< SelectionObject* > > l_selectionObjects = getSelectionObjects();
-
-    for( unsigned int i = l_selectionObjects.size(); i > 0; --i )
+    if( !m_pSelectionTree->populateXMLNode( l_nodeSelectionObjects ) )
     {
-        for( unsigned int j = l_selectionObjects[i - 1].size(); j > 0; --j )
-        {
-            wxXmlNode* l_selectionObject = new wxXmlNode( l_nodeSelectionObjects, wxXML_ELEMENT_NODE, wxT( "object" ) );
-            l_currentSelectionObject = l_selectionObjects[i - 1][j - 1];
-
-            if( ! l_currentSelectionObject->isSelectionObject() )
-                continue;
-
-            wxXmlNode* l_center    = new wxXmlNode( l_selectionObject, wxXML_ELEMENT_NODE, wxT( "center" ) );
-            wxXmlProperty *l_propZ = new wxXmlProperty( wxT( "z" ), wxString::Format( wxT( "%f" ), l_currentSelectionObject->getCenter().z ) );
-            wxXmlProperty *l_propY = new wxXmlProperty( wxT( "y" ), wxString::Format( wxT( "%f" ), l_currentSelectionObject->getCenter().y ), l_propZ );
-            wxXmlProperty *l_propX = new wxXmlProperty( wxT( "x" ), wxString::Format( wxT( "%f" ), l_currentSelectionObject->getCenter().x ), l_propY );
-            l_center->AddProperty( l_propX );
-
-            wxXmlNode* l_size = new wxXmlNode( l_selectionObject, wxXML_ELEMENT_NODE, wxT( "size" ) );
-            l_propZ = new wxXmlProperty( wxT( "z" ), wxString::Format( wxT( "%f" ), l_currentSelectionObject->getSize().z ) );
-            l_propY = new wxXmlProperty( wxT( "y" ), wxString::Format( wxT( "%f" ), l_currentSelectionObject->getSize().y ), l_propZ );
-            l_propX = new wxXmlProperty( wxT( "x" ), wxString::Format( wxT( "%f" ), l_currentSelectionObject->getSize().x ), l_propY );
-            l_size->AddProperty( l_propX );
-
-            wxXmlNode* l_name = new wxXmlNode( l_selectionObject, wxXML_ELEMENT_NODE, wxT( "name" ) );
-            wxXmlProperty* l_propName = new wxXmlProperty( wxT( "string" ), l_currentSelectionObject->getName() );
-            l_name->AddProperty( l_propName );
-
-            wxXmlNode *status = new wxXmlNode( l_selectionObject, wxXML_ELEMENT_NODE, wxT( "status" ) );
-            wxXmlProperty *l_propType;
-
-            if( j - 1 == 0 )
-                l_propType = new wxXmlProperty( wxT( "type" ), wxT( "MASTER" ) );
-            else
-                l_propType = new wxXmlProperty( wxT( "type" ), l_currentSelectionObject->getIsNOT() ? wxT( "NOT" ) : wxT( "AND" ) );
-
-            wxXmlProperty* l_propActive  = new wxXmlProperty( wxT( "active" ),  l_currentSelectionObject->getIsActive()       ? wxT( "yes" ) : wxT( "no" ), l_propType );
-            wxXmlProperty* l_propVisible = new wxXmlProperty( wxT( "visible" ), l_currentSelectionObject->getIsVisible()      ? wxT( "yes" ) : wxT( "no" ), l_propActive );
-            wxXmlProperty* l_propIsBox   = new wxXmlProperty( wxT( "isBox" ),   (l_currentSelectionObject->getSelectionType() == BOX_TYPE) ? wxT( "yes" ) : wxT( "no" ), l_propVisible );
-            
-            status->AddProperty( l_propIsBox );
-        }
+        // TODO how should we react?
     }
 
     int l_countTextures = m_mainFrame->m_pListCtrl->GetItemCount();

@@ -19,10 +19,14 @@ class SelectionEllipsoid : public SelectionObject
 public:
     // Constructor / Destructor
     SelectionEllipsoid( Vector i_center, Vector i_size, DatasetHelper* i_datasetHelper );
+    SelectionEllipsoid( DatasetHelper *pDH );
     virtual ~SelectionEllipsoid();
  
     // Fonctions from SelectionObject (virtual pure)
     hitResult hitTest( Ray* i_ray );
+    
+    // Methods related to loading and saving.
+    virtual wxString getTypeTag() const;
 
     // Fonctions from SelectionObject (virtual)
     void objectUpdate();

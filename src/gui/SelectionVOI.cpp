@@ -374,6 +374,11 @@ bool SelectionVOI::isPointInside( const float xPos, const float yPos, const floa
     return m_includedVoxels.at( dataCoord );
 }
 
+wxString SelectionVOI::getTypeTag() const
+{
+    return wxT( "selectionVOI" );
+}
+
 void SelectionVOI::createPropertiesSizer( PropertiesWindow *pParent )
 {
     SelectionObject::createPropertiesSizer( pParent );
