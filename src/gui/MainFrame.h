@@ -57,6 +57,7 @@ public:
     void onTreeChange();
     void onLoad                             ( wxCommandEvent& evt );
     void onLoadAsPeaks                      ( wxCommandEvent& evt );
+    void onLoadEAPs                         ( wxCommandEvent& evt );
     long getCurrentListIndex() const         { return m_currentListIndex; }
     void createNewAnatomy                   ( DatasetType dataType );
     void updateSliders();

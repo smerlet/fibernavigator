@@ -27,6 +27,7 @@ public:
     wxMenu      *m_menuFile;
         wxMenuItem  *m_itemLoad;
         wxMenuItem  *m_itemLoadAsPeaks;
+        wxMenuItem  *m_itemLoadEAPs;
         wxMenu      *m_menuNewAnatomy;
             wxMenuItem  *m_itemNewAnatomyByte;
             wxMenuItem  *m_itemNewAnatomyRGB;

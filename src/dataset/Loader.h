@@ -21,12 +21,19 @@ private:
     // Set this to true to force the loader to load
     // anats looking as r4 ODFs as a file with 5 peaks per voxel instead.
     bool m_loadAsPeaks;
+    
+    // Set this to true if loading EAPs.
+    // Needs to have a special case since the number of coefficients
+    // can differ wildly.
+    bool m_loadEAPs;
 public:
-    Loader( MainFrame *pMainFrame, ListCtrl *pListCtrl, const bool loadAsPeaks = false ) 
+    Loader( MainFrame *pMainFrame, ListCtrl *pListCtrl, const bool loadAsPeaks = false,
+            const bool loadAsEAPs = false ) 
     :   m_pMainFrame( pMainFrame ),
         m_pListCtrl( pListCtrl ),
         m_error( 0 ),
-        m_loadAsPeaks( loadAsPeaks )
+        m_loadAsPeaks( loadAsPeaks ),
+        m_loadEAPs( loadAsEAPs )
     {
     }
 
@@ -70,11 +77,20 @@ public:
             }
             else
             {
-                DatasetManager::getInstance()->forceLoadingAsMaximas( m_loadAsPeaks );
+                DatasetIndex result;
                 
-                DatasetIndex result = DatasetManager::getInstance()->load( filename, extension );
+                if( m_loadEAPs )
+                {
+                    result = DatasetManager::getInstance()->loadEAPs( filename, extension );
+                }
+                else
+                {
+                    DatasetManager::getInstance()->forceLoadingAsMaximas( m_loadAsPeaks );
                 
-                DatasetManager::getInstance()->forceLoadingAsMaximas( false );
+                    result = DatasetManager::getInstance()->load( filename, extension );
+                
+                    DatasetManager::getInstance()->forceLoadingAsMaximas( false );
+                }
                 
                 if( result.isOk() )
                 {

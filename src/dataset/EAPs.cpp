@@ -61,6 +61,8 @@ EAPs::EAPs( const wxString &filename )
 #else
     m_name = filename.AfterLast( '/' );
 #endif
+    
+    m_type = EAPS;
 
     // Generating hemispheres
     generateSpherePoints( m_scalingFactor );
@@ -87,9 +89,9 @@ EAPs::~EAPs()
 
 bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
 {
-    m_columns = pHeader->dim[1]; //80
-    m_rows    = pHeader->dim[2]; //1
-    m_frames  = pHeader->dim[3]; //72
+    m_columns = pHeader->dim[1];
+    m_rows    = pHeader->dim[2];
+    m_frames  = pHeader->dim[3];
     m_bands   = pHeader->dim[4];
 
     m_voxelSizeX = pHeader->dx;
@@ -106,10 +108,9 @@ bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
         return false;
     }
 
-//     m_type = ODFS; A quoi sert cette ligne?
+    m_type = EAPS;
 
-
-    int nVoxels = pHeader->dim[1] * pHeader->dim[2] * pHeader->dim[3];
+    int nVoxels = m_columns * m_rows * m_frames;
 
     float* eapData = (float*)pBody->data;
 
@@ -123,7 +124,8 @@ bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
     // that will contain all the sphere points representing the ODFs.
 	
 // 	creer un pointeur sur un objet ODF dans le constructeur EAPs et ensuite s'en sevir pour appeler createStrucure
-	odfs->createStructure( odfFloatData ); 
+	// TODO Sylvain you are here.
+    //odfs->createStructure( odfFloatData ); 
 //     createStructure( odfFloatData );
 // 	createStructure( l_data);
 
@@ -144,9 +146,8 @@ bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
 // i_fileFloatData  : The SHORE coefficients read from the loaded nifti file.
 // Returns true if successful, false otherwise.
 ///////////////////////////////////////////////////////////////////////////
-
-// bool EAPs::createStructure( float* shore_data )
-// {
+bool EAPs::createStructure( std::vector< float >& shore_data )
+{
 // // 	Generer les ODFs a partir des coeffient SHORE et utiliser un objet ODFs pour la vizualisation.
 // // Problem : createStructure de la classe ODFs est private.. :( Demander a JC pour trouver un autre moyen ou simplement 
 // // creer une fonction qui prend les SH et fait create structure dans le style de la fonction lODFs::load (une sorte de wrapper)
@@ -174,8 +175,13 @@ bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
 // 	
 // 
 // 
-//     return true;
-// }
+    return true;
+}
+
+void EAPs::drawGlyph(int zVoxel, int yVoxel, int xVoxel, AxisType axis)
+{
+    odfs->drawGlyph(zVoxel, yVoxel, xVoxel, axis);
+}
 
 
 
@@ -254,3 +260,121 @@ std::vector< float > EAPs::shoreToSh( float* shoreData, double radius, int nVoxe
 // 		return sqrt( (2* 1) / (zeta ** 1.5 * sp.gamma(n + 1.5)) )
 // 	else :
 // 		return sqrt( (2* math.factorial(n -l)) / (zeta ** 1.5 * sp.gamma(n + 1.5)) )
+
+void EAPs::createPropertiesSizer( PropertiesWindow *pParent )
+{
+    Glyph::createPropertiesSizer( pParent );
+    
+    setColorWithPosition( true );
+    
+    wxBoxSizer *pBoxMain = new wxBoxSizer( wxVERTICAL );
+    
+    //////////////////////////////////////////////////////////////////////////
+    
+    // TODO radius slider goes here
+    //m_pSliderRadius = new MySlider( pParent, wxID_ANY, 5, 0, 10,    DEF_POS, wxSize( 100, -1 ), wxSL_HORIZONTAL | wxSL_AUTOTICKS );
+    //m_pTxtThres    = new wxTextCtrl(   pParent, wxID_ANY, wxT( "0.5"), DEF_POS, wxSize(  40, -1 ), wxTE_READONLY);
+    //m_pLblThres    = new wxStaticText( pParent, wxID_ANY, wxT( "Threshold" ) );
+    //m_pBtnMainDir  = new wxButton(     pParent, wxID_ANY, wxT( "Recalculate" ), DEF_POS, wxSize( 140, -1 ) );
+    //wxRadioButton *pRadDescoteauxBasis = new wxRadioButton( pParent, wxID_ANY, wxT( "Descoteaux" ), DEF_POS, DEF_SIZE, wxRB_GROUP );
+    //wxRadioButton *pRadTournierBasis   = new wxRadioButton( pParent, wxID_ANY, wxT( "MRtrix" ) );
+    //wxRadioButton *pRadDipyBasis   = new wxRadioButton( pParent, wxID_ANY, wxT( "Dipy" ) );
+    ////     wxRadioButton *pRadOriginalBasis   = new wxRadioButton( pParent, wxID_ANY, wxT( "RR5768" ) );
+    ////     wxRadioButton *pRadPTKBasis        = new wxRadioButton( pParent, wxID_ANY, wxT( "PTK" ) );
+    
+    //////////////////////////////////////////////////////////////////////////
+    
+    /*wxBoxSizer *pBoxFlood = new wxBoxSizer( wxHORIZONTAL );
+    pBoxFlood->Add( m_pLblThres,   0, wxALIGN_CENTER_VERTICAL | wxALL, 1 );
+    pBoxFlood->Add( m_pSliderFlood, 1, wxALIGN_CENTER_VERTICAL | wxALL, 1 );
+    pBoxFlood->Add( m_pTxtThres, 0, wxFIXED_MINSIZE | wxALIGN_RIGHT | wxALIGN_CENTER_VERTICAL | wxALL, 1 );
+    pBoxMain->Add( pBoxFlood, 0, wxEXPAND, 0 );*/
+    
+    //////////////////////////////////////////////////////////////////////////
+    
+    //pBoxMain->Add( m_pBtnMainDir, 0, wxALIGN_CENTER | wxEXPAND | wxRIGHT | wxLEFT, 24 );
+    
+    /*wxBoxSizer *pBoxShBasis = new wxBoxSizer( wxVERTICAL );
+    pBoxShBasis->Add( new wxStaticText( pParent, wxID_ANY, wxT( "Sh Basis:" ) ), 0, wxALIGN_LEFT | wxALL, 1 );
+    
+    wxBoxSizer *pBoxShBasisRadios = new wxBoxSizer( wxVERTICAL );
+    //     pBoxShBasisRadios->Add( pRadOriginalBasis,   0, wxALIGN_LEFT | wxALL, 1 );
+    pBoxShBasisRadios->Add( pRadDescoteauxBasis, 0, wxALIGN_LEFT | wxALL, 1 );
+    pBoxShBasisRadios->Add( pRadTournierBasis,   0, wxALIGN_LEFT | wxALL, 1 );
+    pBoxShBasisRadios->Add( pRadDipyBasis,   0, wxALIGN_LEFT | wxALL, 1 );
+    //     pBoxShBasisRadios->Add( pRadPTKBasis,        0, wxALIGN_LEFT | wxALL, 1 );
+    pBoxShBasis->Add( pBoxShBasisRadios, 0, wxALIGN_LEFT | wxLEFT, 32 );
+    
+    pBoxMain->Add( pBoxShBasis, 0, wxFIXED_MINSIZE | wxEXPAND, 0 );*/
+    
+    //////////////////////////////////////////////////////////////////////////
+    
+    //pParent->Connect( m_pSliderFlood->GetId(),      wxEVT_COMMAND_SLIDER_UPDATED,       wxCommandEventHandler( PropertiesWindow::OnSliderAxisMoved ) );
+    //pParent->Connect( m_pBtnMainDir->GetId(),       wxEVT_COMMAND_BUTTON_CLICKED,       wxCommandEventHandler( PropertiesWindow::OnRecalcMainDir ) );
+    ////     pParent->Connect( pRadOriginalBasis->GetId(),   wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PropertiesWindow::OnOriginalShBasis ) );
+    //pParent->Connect( pRadDescoteauxBasis->GetId(), wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PropertiesWindow::OnDescoteauxShBasis ) );
+    //pParent->Connect( pRadTournierBasis->GetId(),   wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PropertiesWindow::OnTournierShBasis ) );
+    //pParent->Connect( pRadDipyBasis->GetId(),   wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PropertiesWindow::OnDipyShBasis ) );
+    ////     pParent->Connect( pRadPTKBasis->GetId(),        wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PropertiesWindow::OnPTKShBasis ) );
+    
+    //////////////////////////////////////////////////////////////////////////
+    
+    //     pRadOriginalBasis->SetValue(   isShBasis( SH_BASIS_RR5768 ) );
+    //pRadDescoteauxBasis->SetValue( isShBasis( SH_BASIS_DESCOTEAUX ) );
+    //pRadTournierBasis->SetValue(   isShBasis( SH_BASIS_TOURNIER ) );
+    //pRadDipyBasis->SetValue(   isShBasis( SH_BASIS_DIPY ) );
+    //     pRadPTKBasis->SetValue(        isShBasis( SH_BASIS_PTK ) );
+    
+    m_pSliderLightAttenuation->SetValue( m_pSliderLightAttenuation->GetMin() );
+    m_pSliderLightXPosition->SetValue( m_pSliderLightXPosition->GetMin() );
+    m_pSliderLightYPosition->SetValue( m_pSliderLightYPosition->GetMin() );
+    m_pSliderLightZPosition->SetValue( m_pSliderLightZPosition->GetMin() );
+    
+    //////////////////////////////////////////////////////////////////////////
+    
+    m_pPropertiesSizer->Add( pBoxMain, 0, wxFIXED_MINSIZE | wxEXPAND, 0 );
+}
+
+void EAPs::updatePropertiesSizer()
+{
+    //     Glyph::updatePropertiesSizer();
+    DatasetInfo::updatePropertiesSizer();
+    
+    m_pSliderLightAttenuation->Enable( false );
+    m_pSliderLightXPosition->Enable( false );
+    m_pSliderLightYPosition->Enable( false );
+    m_pSliderLightZPosition->Enable( false );
+    m_pBtnFlipX->Enable( false );
+    m_pBtnFlipY->Enable( false );
+    m_pBtnFlipZ->Enable( false );
+    
+    m_pSliderMinHue->SetValue(     getColor( MIN_HUE )    * 100 );
+    m_pSliderMaxHue->SetValue(     getColor( MAX_HUE )    * 100 );
+    m_pSliderSaturation->SetValue( getColor( SATURATION ) * 100 );
+    m_pSliderLuminance->SetValue(  getColor( LUMINANCE )  * 100 );
+    m_pSliderLOD->SetValue(        (int)getLOD() );
+    m_pSliderDisplay->SetValue(    getDisplayFactor() );
+    m_pSliderScalingFactor->SetValue( getScalingFactor() * 10.0f );
+    
+    m_pToggleAxisFlipX->SetValue( isAxisFlipped( X_AXIS ) );
+    m_pToggleAxisFlipY->SetValue( isAxisFlipped( Y_AXIS ) );
+    m_pToggleAxisFlipZ->SetValue( isAxisFlipped( Z_AXIS ) );
+    m_pToggleColorWithPosition->SetValue( getColorWithPosition() );
+    
+    //m_psliderScalingFactor->SetValue(m_psliderScalingFactor->GetMin());
+    
+    /*if( !isDisplayShape( AXIS ) )
+    {
+        m_pLblThres->Hide();
+        m_pSliderFlood->Hide();
+        m_pTxtThres->Hide();
+        m_pBtnMainDir->Hide();
+    }
+    else
+    {
+        m_pLblThres->Show();
+        m_pSliderFlood->Show();
+        m_pTxtThres->Show();
+        m_pBtnMainDir->Show();
+    }*/
+}

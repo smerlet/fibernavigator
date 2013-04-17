@@ -138,6 +138,18 @@ std::vector<ODFs *> DatasetManager::getOdfs() const
 
 //////////////////////////////////////////////////////////////////////////
 
+std::vector<EAPs *> DatasetManager::getEaps() const
+{
+    vector<EAPs *> v;
+    for( map<DatasetIndex, EAPs *>::const_iterator it = m_eaps.begin(); it != m_eaps.end(); ++it )
+    {
+        v.push_back( it->second );
+    }
+    return v;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 std::vector<Maximas *> DatasetManager::getMaximas() const
 {
     vector<Maximas *> v;
@@ -377,6 +389,52 @@ DatasetIndex DatasetManager::load( const wxString &filename, const wxString &ext
 
 //////////////////////////////////////////////////////////////////////////
 
+DatasetIndex DatasetManager::loadEAPs( const wxString &filename, const wxString &extension )
+{
+    DatasetIndex result( BAD_INDEX );
+    
+    if( !wxFileName::FileExists( filename ) )
+    {
+        Logger::getInstance()->print( wxString::Format( wxT( "File \"%s\" does not exist!" ), filename.c_str() ), LOGLEVEL_ERROR );
+        return result;
+    }
+    
+    if( wxT( "nii" ) == extension )
+    {
+        nifti_image *pHeader = nifti_image_read( filename.char_str(), 0 );
+        nifti_image *pBody   = nifti_image_read( filename.char_str(), 1 );
+        
+        if( NULL == pHeader || NULL == pBody )
+        {
+            Logger::getInstance()->print( wxT( "nifti file corrupt, cannot create nifti image from header" ), LOGLEVEL_ERROR );
+        }
+        
+        if ( m_anatomies.empty() )
+        {
+            Logger::getInstance()->print( wxT( "No anatomy file loaded" ), LOGLEVEL_ERROR );
+        }
+        else if ( !m_eaps.empty() )
+        {
+            Logger::getInstance()->print( wxT( "EAP file already loaded" ), LOGLEVEL_ERROR );
+        }
+        else
+        {
+            result = loadEAP(filename, pHeader, pBody );
+        }
+        
+        nifti_image_free( pHeader );
+        nifti_image_free( pBody );
+    }
+    else
+    {
+        Logger::getInstance()->print( wxString::Format( wxT( "Unsupported file format \"%s\"" ), extension.c_str() ), LOGLEVEL_ERROR );
+    }
+    
+    return result;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 void DatasetManager::remove( const DatasetIndex index )
 {
     map<DatasetIndex, DatasetInfo *>::iterator it = m_datasets.find( index );
@@ -406,6 +464,10 @@ void DatasetManager::remove( const DatasetIndex index )
     case ODFS:
         Logger::getInstance()->print( wxString::Format( wxT( "Removing index: %u type: %s" ), static_cast<unsigned int>( index ), wxT( "ODFs" ) ), LOGLEVEL_DEBUG );
         m_odfs.erase( m_odfs.find( index ) );
+        break;
+    case EAPS:
+        Logger::getInstance()->print( wxString::Format( wxT( "Removing index: %u type: %s" ), static_cast<unsigned int>( index ), wxT( "EAPs" ) ), LOGLEVEL_DEBUG );
+        m_eaps.erase( m_eaps.find( index ) );
         break;
     case FIBERS:
         Logger::getInstance()->print( wxString::Format( wxT( "Removing index: %u type: %s" ), static_cast<unsigned int>( index ), wxT( "Fibers" ) ), LOGLEVEL_DEBUG );
@@ -510,6 +572,19 @@ DatasetIndex DatasetManager::insert( ODFs * pOdfs )
     m_odfs[index]      = pOdfs;
     m_reverseDatasets[pOdfs] = index;
 
+    return index;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+DatasetIndex DatasetManager::insert( EAPs * pEaps )
+{
+    DatasetIndex index = getNextAvailableIndex();
+    
+    m_datasets[index]  = pEaps;
+    m_eaps[index]      = pEaps;
+    m_reverseDatasets[pEaps] = index;
+    
     return index;
 }
 
@@ -683,6 +758,32 @@ DatasetIndex DatasetManager::loadODF( const wxString &filename, nifti_image *pHe
     }
 
     delete pOdfs;
+    return BAD_INDEX;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+DatasetIndex DatasetManager::loadEAP( const wxString &filename, nifti_image *pHeader, nifti_image *pBody )
+{
+    Logger::getInstance()->print( wxT( "Loading EAP" ), LOGLEVEL_MESSAGE );
+    
+    EAPs *pEaps = new EAPs( filename );
+    if( pEaps->load( pHeader, pBody ) )
+    {
+        Logger::getInstance()->print( wxT( "Assigning attributes" ), LOGLEVEL_DEBUG );
+        // TODO EAPs
+        //pOdfs->setThreshold( THRESHOLD );
+        //pOdfs->setAlpha( ALPHA );
+        //pOdfs->setShow( SHOW );
+        //pOdfs->setShowFS( SHOW_FS );
+        //pOdfs->setUseTex( USE_TEX );
+        
+        DatasetIndex index = insert( pEaps );
+        
+        return index;
+    }
+    
+    delete pEaps;
     return BAD_INDEX;
 }
 

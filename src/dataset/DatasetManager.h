@@ -3,6 +3,7 @@
 
 #include "Anatomy.h"
 #include "DatasetIndex.h"
+#include "EAPs.h"
 #include "FibersGroup.h"
 #include "ODFs.h"
 #include "Maximas.h"
@@ -40,6 +41,7 @@ public:
     size_t                  getFibersCount() const          { return m_fibers.size(); }
     std::vector<Mesh *>     getMeshes() const;
     std::vector<ODFs *>     getOdfs() const;
+    std::vector<EAPs *>     getEaps() const;
     std::vector<Maximas *>  getMaximas() const;
     Fibers *                getSelectedFibers( DatasetIndex index ) const;
     std::vector<Tensors *>  getTensors() const;
@@ -58,6 +60,7 @@ public:
     bool                    isFibersGroupLoaded() const     { return !m_fibersGroup.empty(); }
     bool                    isMeshLoaded() const            { return !m_meshes.empty(); }
     bool                    isOdfsLoaded() const            { return !m_odfs.empty(); }
+    bool                    isEapsLoaded() const            { return !m_eaps.empty(); }
     bool                    isTensorsLoaded() const         { return !m_tensors.empty(); }
     bool                    isMaximasLoaded() const         { return !m_maximas.empty(); }
     bool                    isTensorsFieldLoaded() const    { return false; }
@@ -69,6 +72,9 @@ public:
 
     // Check with DatasetIndex::isOk() method to know if index is valid
     DatasetIndex load( const wxString &filename, const wxString &extension );
+    
+    // Special case loading method since EAP files can have a varying number of coefficients.
+    DatasetIndex loadEAPs( const wxString &filename, const wxString &extension );
 
     // return index of the created dataset
     DatasetIndex createAnatomy()                                                 { return insert( new Anatomy() ); }
@@ -78,6 +84,8 @@ public:
     DatasetIndex createCIsoSurface( Anatomy *pAnatomy )                          { return insert( new CIsoSurface( pAnatomy ) ); }
     DatasetIndex createFibersGroup()                                             { return insert( new FibersGroup() ); }
     DatasetIndex createODFs( const wxString &filename )                          { return insert( new ODFs( filename ) ); }
+    // TODO
+    // DatasetIndex createEAPs( const wxString &filename )                         { return insert( new EAPs( filename ) ); }
     DatasetIndex createMaximas( const wxString &filename )                       { return insert( new Maximas( filename ) ); }
 
     void remove( const DatasetIndex index );
@@ -100,6 +108,7 @@ private:
     DatasetIndex insert( FibersGroup * pFibersGroup );
     DatasetIndex insert( Mesh * pMesh );
     DatasetIndex insert( ODFs * pOdfs );
+    DatasetIndex insert( EAPs * pEaps );
     DatasetIndex insert( Tensors * pTensors );
     DatasetIndex insert( Maximas * pMaximas );
 
@@ -115,6 +124,9 @@ private:
 
     // Loads an ODF. Extension supported: .nii and .nii.gz
     DatasetIndex loadODF( const wxString &filename, nifti_image *pHeader, nifti_image *pBody );
+    
+    // Loads an EAP file. Extensions supported: .nii and .nii.gz
+    DatasetIndex loadEAP( const wxString &filename, nifti_image *pHeader, nifti_image *pBody );
 
     // Loads tensors. Extension supported: .nii and .nii.gz
     DatasetIndex loadTensors( const wxString &filename, nifti_image *pHeader, nifti_image *pBody );
@@ -133,6 +145,7 @@ private:
     std::map<DatasetIndex, FibersGroup *> m_fibersGroup;
     std::map<DatasetIndex, Mesh *> m_meshes;
     std::map<DatasetIndex, ODFs *> m_odfs;
+    std::map<DatasetIndex, EAPs *> m_eaps;
     std::map<DatasetIndex, Tensors *> m_tensors;
     std::map<DatasetIndex, Maximas *> m_maximas;
     std::map<DatasetInfo *, DatasetIndex> m_reverseDatasets;
@@ -140,6 +153,7 @@ private:
     FMatrix m_niftiTransform;
     
     bool m_forceLoadingAsMaximas;
+    bool m_loadingEAPs;
 };
 
 #endif //DATASETMANAGER_H_
