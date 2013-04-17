@@ -19,13 +19,19 @@
 #include <complex>
 #include <map>
 
-class MySlider;
-
 enum SH_BASIS { SH_BASIS_RR5768, SH_BASIS_DESCOTEAUX, SH_BASIS_TOURNIER, SH_BASIS_PTK, SH_BASIS_DIPY };
+
+class MySlider;
+class EAPs;
+
+
 
 class ODFs : public Glyph
 {
 public:
+	
+	friend class EAPs;	
+	
     // Constructor/Destructor
     //ODFs();
     ODFs( const wxString &filename );
