@@ -78,7 +78,8 @@ private:
 
     std::vector<std::pair<float,int> >* m_nbors;
 	std::vector< float > shoreToSh( float* shoreData, double radius, int nVoxels, int m_bands);
-	
+	double shoreFunction(unsigned n, unsigned l, double zeta, double x)	;
+	double kappa(unsigned n, unsigned l, double zeta);
 	
     SH_BASIS                            m_sh_basis;
 };

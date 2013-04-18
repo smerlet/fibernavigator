@@ -37,6 +37,15 @@ using std::pair;
 
 #include <vector>
 using std::vector;
+/*
+
+#include <math.h>
+#include <gsl.h>*/
+#include <gsl/gsl_sf_laguerre.h>
+#include <boost/math/special_functions/laguerre.hpp>
+#include <boost/math/special_functions/gamma.hpp>
+#include <boost/math/special_functions/factorials.hpp>
+
 
 #define DEF_POS   wxDefaultPosition
 #define DEF_SIZE  wxDefaultSize
@@ -128,7 +137,7 @@ bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
     //double radius=1e-3;
     double radius = 1.0;
 	odfFloatData=shoreToSh( eapData, radius, nVoxels, m_bands);
-
+	std::cout << "avant createStructure" << std::endl;
     // Once the file has been read successfully, we need to create the structure 
     // that will contain all the sphere points representing the ODFs.
 	
@@ -203,7 +212,7 @@ void EAPs::sliderPosChanged( AxisType axis )
 }
 
 
-std::vector< float > EAPs::shoreToSh( float* shoreData, double radius, int nVoxels, int m_bands)
+std::vector< float > EAPs::shoreToSh( float* shoreData,  double radius, int nVoxels, int m_bands)
 {
 // 	Converti les coefficient SHORE vers des coefficients SH
 
@@ -213,8 +222,17 @@ std::vector< float > EAPs::shoreToSh( float* shoreData, double radius, int nVoxe
 // 	double laguerre( unsigned n, double x ) ;
 // 	exponentielles : exp
 // (regarder aussi cmath.h)	
+// 	genlaguerre(n - l,l + 0.5)(r ** 2 / zeta)
+	unsigned n(3);
+	unsigned l(2);
+	double x(1e-2);
+	double lagf(0.0);
+	double zeta(700); //A inserer dans la fonction
 
+	//Il me faut  definir quels sont les coefficient d'harmonic spherique pour un r fixe
+	double res(shoreFunction(n,l,zeta,x));
 
+	std::cout << "res: " << res << std::endl;
     std::vector< float > odfFloatData( nVoxels * m_bands );
 
     // We need to do a bit of moving around with the data in order to have it like we want.
@@ -229,6 +247,34 @@ std::vector< float > EAPs::shoreToSh( float* shoreData, double radius, int nVoxe
     return odfFloatData;
 }
 
+
+double EAPs::shoreFunction(unsigned n, unsigned l, double zeta, double x)
+{
+		double res(1);
+		res*=boost::math::laguerre( n  , l , x );
+		std::cout << "res: " << res << std::endl;
+		res*=exp(-x/2);
+		std::cout << "res: " << res << std::endl;
+		res*=kappa(n,l,zeta);
+		std::cout << "res: " << res << std::endl;
+		res*=pow(x,2);
+
+		return res;
+}
+
+
+double EAPs::kappa(unsigned n, unsigned l, double zeta)
+{
+	double res(0);
+	if(n-l<0)
+	{
+		res= sqrt( (2* 1) / (pow(zeta,1.5) * boost::math::tgamma(n + 1.5)) );
+	}
+	else{
+		return sqrt((2* boost::math::factorial<double>(n -l)) / (pow(zeta,1.5) * boost::math::tgamma(n + 1.5)) );
+	}
+	return res;
+}
 
 // def EAPmatrix(self,r, theta, phi):
 // 	"Compute the matrix function used to model the diffusion propagator"
@@ -262,22 +308,6 @@ std::vector< float > EAPs::shoreToSh( float* shoreData, double radius, int nVoxe
 // 	return M[:,0:counter]
 
 
-// double kappa(double zeta, int n, int l)
-// {
-// 	double res=0
-// 	if (n-l<0)
-// 	{
-// 		res= sqrt()
-// double Helper::getLegendrePlm( int i_m, double i_x )		
-// Helper::getFactorial( i_l - l_absm )
-// }
-	
-// @staticmethod
-// def kappa(zeta, n , l):
-// 	if n-l<0 :
-// 		return sqrt( (2* 1) / (zeta ** 1.5 * sp.gamma(n + 1.5)) )
-// 	else :
-// 		return sqrt( (2* math.factorial(n -l)) / (zeta ** 1.5 * sp.gamma(n + 1.5)) )
 
 void EAPs::createPropertiesSizer( PropertiesWindow *pParent )
 {
