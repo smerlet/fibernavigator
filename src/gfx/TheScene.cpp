@@ -17,6 +17,7 @@
 #include "../dataset/AnatomyHelper.h"
 #include "../dataset/DatasetInfo.h"
 #include "../dataset/DatasetManager.h"
+#include "../dataset/EAPs.h"
 #include "../dataset/Fibers.h"
 #include "../dataset/Mesh.h"
 #include "../dataset/ODFs.h"
@@ -317,6 +318,9 @@ void TheScene::renderScene()
 
     if( DatasetManager::getInstance()->isOdfsLoaded() )
         renderODFs();
+    
+    if( DatasetManager::getInstance()->isEapsLoaded() )
+        renderEAPs();
 
     if( DatasetManager::getInstance()->isMaximasLoaded() )
         drawMaximas();
@@ -702,6 +706,34 @@ void TheScene::renderODFs()
     }
 
     Logger::getInstance()->printIfGLError( wxT( "Draw ODFs" ) );
+    glPopAttrib();
+}
+
+///////////////////////////////////////////////////////////////////////////
+// This function will render the EAPs in theScene.
+///////////////////////////////////////////////////////////////////////////
+void TheScene::renderEAPs()
+{
+    glPushAttrib( GL_ALL_ATTRIB_BITS );
+    
+    // This will check if we are suppose to draw the odfs using GL_LINE or GL_FILL.
+    if( SceneManager::getInstance()->isPointMode() )
+        glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+    else
+        glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+    
+    vector<EAPs *> v = DatasetManager::getInstance()->getEaps();
+    for(vector<EAPs *>::iterator it = v.begin(); it != v.end(); ++it )
+    {
+        EAPs *pEaps = *it;
+        if( pEaps->getShow() )
+        {
+            lightsOff();
+            pEaps->draw();
+        }
+    }
+    
+    Logger::getInstance()->printIfGLError( wxT( "Draw EAPs" ) );
     glPopAttrib();
 }
 

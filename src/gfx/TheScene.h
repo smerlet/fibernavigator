@@ -86,6 +86,7 @@ private:
     void renderMesh             ();
     void renderMeshInternal( DatasetInfo *pDsInfo );
     void renderODFs             ();
+    void renderEAPs             ();
     void renderSlices           ();
     void renderTensors          ();
     void drawMaximas            ();

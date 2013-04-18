@@ -67,13 +67,13 @@ public:
 
 protected:
     void swap( ODFs &o );
+    void sliderPosChanged ( AxisType i_axis );
 
 private:
     // From Glyph
     bool createStructure  ( std::vector< float > &i_fileFloatData );
     void drawGlyph        ( int i_zVoxel, int i_yVoxel, int i_xVoxel, AxisType i_axis );
     void loadBuffer       ();
-    void sliderPosChanged ( AxisType i_axis );  
     
 
     // Functions

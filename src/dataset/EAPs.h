@@ -37,7 +37,7 @@ public:
 
     // From DatasetInfo
     // TODO implement
-    //void draw();
+    void draw();
     bool load( nifti_image *pHeader, nifti_image *pBody );
     // TODO Sylvain
     // bool save( wxXmlNode *pNode ) const;
@@ -62,6 +62,8 @@ protected:
                                   int      i_yVoxel, 
                                   int      i_xVoxel, 
                                   AxisType i_axis );
+    
+    virtual void sliderPosChanged( AxisType i_axis );
 
 
 private:

@@ -93,11 +93,19 @@ bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
     m_rows    = pHeader->dim[2];
     m_frames  = pHeader->dim[3];
     m_bands   = pHeader->dim[4];
+    odfs->m_columns = m_columns;
+    odfs->m_rows = m_rows;
+    odfs->m_frames = m_frames;
+    odfs->m_bands = m_bands;
 
     m_voxelSizeX = pHeader->dx;
     m_voxelSizeY = pHeader->dy;
     m_voxelSizeZ = pHeader->dz;
-
+    
+    odfs->m_voxelSizeX = m_voxelSizeX;
+    odfs->m_voxelSizeY = m_voxelSizeY;
+    odfs->m_voxelSizeZ = m_voxelSizeZ;
+    
     float voxelX = DatasetManager::getInstance()->getVoxelX();
     float voxelY = DatasetManager::getInstance()->getVoxelY();
     float voxelZ = DatasetManager::getInstance()->getVoxelZ();
@@ -117,7 +125,8 @@ bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
 	
 	std::vector< float > odfFloatData( nVoxels * m_bands );
 	
-	double radius=1e-3;
+    //double radius=1e-3;
+    double radius = 1.0;
 	odfFloatData=shoreToSh( eapData, radius, nVoxels, m_bands);
 
     // Once the file has been read successfully, we need to create the structure 
@@ -125,7 +134,7 @@ bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
 	
 // 	creer un pointeur sur un objet ODF dans le constructeur EAPs et ensuite s'en sevir pour appeler createStrucure
 	// TODO Sylvain you are here.
-    //odfs->createStructure( odfFloatData ); 
+    odfs->createStructure( odfFloatData ); 
 //     createStructure( odfFloatData );
 // 	createStructure( l_data);
 
@@ -178,11 +187,20 @@ bool EAPs::createStructure( std::vector< float >& shore_data )
     return true;
 }
 
+void EAPs::draw()
+{
+    odfs->draw();
+}
+
 void EAPs::drawGlyph(int zVoxel, int yVoxel, int xVoxel, AxisType axis)
 {
     odfs->drawGlyph(zVoxel, yVoxel, xVoxel, axis);
 }
 
+void EAPs::sliderPosChanged( AxisType axis )
+{
+    odfs->sliderPosChanged( axis );
+}
 
 
 std::vector< float > EAPs::shoreToSh( float* shoreData, double radius, int nVoxels, int m_bands)

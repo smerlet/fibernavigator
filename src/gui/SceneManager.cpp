@@ -373,6 +373,12 @@ void SceneManager::updateView( const float x, const float y, const float z, bool
     {
         (*it)->refreshSlidersValues();
     }
+    
+    vector<EAPs *> eaps = DatasetManager::getInstance()->getEaps();
+    for( vector<EAPs *>::iterator it = eaps.begin(); it != eaps.end(); ++it )
+    {
+        (*it)->refreshSlidersValues();
+    }
 
     vector<Tensors *> tensors = DatasetManager::getInstance()->getTensors();
     for( vector<Tensors *>::iterator it = tensors.begin(); it != tensors.end(); ++it )
