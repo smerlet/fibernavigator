@@ -30,8 +30,6 @@ class ODFs : public Glyph
 {
 public:
 	
-	friend class EAPs;	
-	
     // Constructor/Destructor
     //ODFs();
     ODFs( const wxString &filename );
@@ -68,11 +66,17 @@ public:
 protected:
     void swap( ODFs &o );
     void sliderPosChanged ( AxisType i_axis );
+    
+    // Was private, should be inherited by children classes.
+    virtual bool createStructure  ( std::vector< float > &i_fileFloatData );
+    void drawGlyph        ( int i_zVoxel, int i_yVoxel, int i_xVoxel, AxisType i_axis );
+    
+    // Data members
+    int      m_order;
+    SH_BASIS m_sh_basis;
 
 private:
     // From Glyph
-    bool createStructure  ( std::vector< float > &i_fileFloatData );
-    void drawGlyph        ( int i_zVoxel, int i_yVoxel, int i_xVoxel, AxisType i_axis );
     void loadBuffer       ();
     
 
@@ -122,7 +126,6 @@ private:
     struct direction { double x, y, z; };
 
     // Variables
-    int     m_order;
     GLuint  m_radiusAttribLoc;
     GLuint* m_radiusBuffer; 
 
@@ -143,8 +146,6 @@ private:
     float                               m_angle_min;
     std::vector<std::pair<float,int> >* m_nbors;
     std::vector<std::vector<Vector> >   m_mainDirections;
-
-    SH_BASIS                            m_sh_basis;
 };
 
 #endif /* ODFS_H_ */

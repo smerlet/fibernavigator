@@ -10,6 +10,7 @@
 #include "../main.h"
 #include "../dataset/Anatomy.h"
 #include "../dataset/DatasetManager.h"
+#include "../dataset/EAPs.h"
 #include "../dataset/Fibers.h"
 #include "../dataset/FibersGroup.h"
 #include "../dataset/ODFs.h"
@@ -1066,7 +1067,7 @@ void PropertiesWindow::updateGlyphColoration( GlyphColorModifier i_modifier, flo
     if( m_pMainFrame->m_pCurrentSceneObject != NULL && m_pMainFrame->m_currentListIndex != -1 )
     {            
         DatasetInfo* l_info = (DatasetInfo*)m_pMainFrame->m_pCurrentSceneObject;    
-        if( l_info->getType() == TENSORS || l_info->getType() == ODFS )
+        if( l_info->getType() == TENSORS || l_info->getType() == ODFS || l_info->getType() == EAPS )
             ( (Glyph*)l_info )->setColor( i_modifier, i_value );
     }
 }
@@ -1081,7 +1082,7 @@ void PropertiesWindow::OnGlyphLODSliderMoved( wxCommandEvent& WXUNUSED(event) )
     if( m_pMainFrame->m_pCurrentSceneObject != NULL && m_pMainFrame->m_currentListIndex != -1 )
     {            
         DatasetInfo* l_info = (DatasetInfo*)m_pMainFrame->m_pCurrentSceneObject;
-        if( l_info->getType() == TENSORS || l_info->getType() == ODFS )
+        if( l_info->getType() == TENSORS || l_info->getType() == ODFS || l_info->getType() == EAPS )
         {
             ( (Glyph*)l_info )->setLOD( (LODChoices)((Glyph*)m_pMainFrame->m_pCurrentSceneObject)->m_pSliderLOD->GetValue() );
         }
@@ -1098,7 +1099,7 @@ void PropertiesWindow::OnGlyphLightAttenuationSliderMoved( wxCommandEvent& WXUNU
     if( m_pMainFrame->m_pCurrentSceneObject != NULL && m_pMainFrame->m_currentListIndex != -1 )
     {            
         DatasetInfo* l_info = (DatasetInfo*)m_pMainFrame->m_pCurrentSceneObject;
-        if( l_info->getType() == TENSORS || l_info->getType() == ODFS )
+        if( l_info->getType() == TENSORS || l_info->getType() == ODFS || l_info->getType() == EAPS )
             ( (Glyph*)l_info )->setLighAttenuation( ((Glyph*)m_pMainFrame->m_pCurrentSceneObject)->m_pSliderLightAttenuation->GetValue() / 100.0f );
     }
 }
@@ -1338,6 +1339,20 @@ void PropertiesWindow::OnGlyphColorWithPosition( wxCommandEvent& event )
     if( m_pMainFrame->m_pCurrentSceneObject != NULL && m_pMainFrame->m_currentListIndex != -1 )
     {
         ((Glyph*)m_pMainFrame->m_pCurrentSceneObject)->setColorWithPosition( event.IsChecked() );
+    }
+}
+
+void PropertiesWindow::OnEAPRadiusSliderMoved( wxCommandEvent& event )
+{
+    Logger::getInstance()->print( wxT( "Event triggered - PropertiesWindow::OnEAPRadiusSliderMoved" ), LOGLEVEL_DEBUG );
+    
+    if( m_pMainFrame->m_pCurrentSceneObject != NULL && m_pMainFrame->m_currentListIndex != -1 )
+    {
+        DatasetInfo* pInfo = (DatasetInfo*)m_pMainFrame->m_pCurrentSceneObject;
+        if( pInfo->getType() == EAPS )
+        {
+            ((EAPs*)pInfo)->updateDisplayRadius();
+        }
     }
 }
 

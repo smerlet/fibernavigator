@@ -13,13 +13,10 @@
 
 #include "DatasetManager.h"
 #include "../Logger.h"
-#include "../gfx/ShaderHelper.h"
 #include "../gui/MyListCtrl.h"
-#include "../gui/SceneManager.h"
 #include "../misc/nifti/nifti1_io.h"
 #include "../misc/Fantom/FMatrix.h"
 
-#include <GL/glew.h>
 #include <wx/math.h>
 #include <wx/xml/xml.h>
 
@@ -53,17 +50,10 @@ using std::vector;
 
 
 EAPs::EAPs( const wxString &filename )
-:   Glyph(), 
-    m_isMaximasSet   ( false ),
-    m_axisThreshold  ( 0.5f ),
-    m_order          ( 0 ),
-    m_radiusAttribLoc( 0 ),
-    m_radiusBuffer   ( NULL ),    
-    m_nbors          ( NULL ),
-	m_sh_basis       ( SH_BASIS_DIPY )
+:   ODFs( filename )
 {
-    m_scalingFactor = 5.0f;
-    m_fullPath = filename;
+    m_order = 0;
+    m_sh_basis = SH_BASIS_DIPY;
 
 #ifdef __WXMSW__
     m_name = filename.AfterLast( '\\' );
@@ -72,27 +62,12 @@ EAPs::EAPs( const wxString &filename )
 #endif
     
     m_type = EAPS;
-
-    // Generating hemispheres
-    generateSpherePoints( m_scalingFactor );
-// 	
- 	odfs=new ODFs(filename); // Ne pas oublier de delete l'odfs dans le destructeur
 }
 
 EAPs::~EAPs()
 {
     Logger::getInstance()->print( wxT( "Executing EAPs destructor..." ), LOGLEVEL_DEBUG );
-    if( m_radiusBuffer )
-    {
-        glDeleteBuffers( 1, m_radiusBuffer );
-        delete [] m_radiusBuffer;
-    }
-
-    if( m_nbors != NULL )
-    {
-        delete [] m_nbors;
-        m_nbors = NULL;
-    }
+    
     Logger::getInstance()->print( wxT( "EAPs destructor done." ), LOGLEVEL_DEBUG );
 }
 
@@ -102,19 +77,11 @@ bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
     m_rows    = pHeader->dim[2];
     m_frames  = pHeader->dim[3];
     m_bands   = pHeader->dim[4];
-    odfs->m_columns = m_columns;
-    odfs->m_rows = m_rows;
-    odfs->m_frames = m_frames;
-    odfs->m_bands = m_bands;
 
     m_voxelSizeX = pHeader->dx;
     m_voxelSizeY = pHeader->dy;
     m_voxelSizeZ = pHeader->dz;
-    
-    odfs->m_voxelSizeX = m_voxelSizeX;
-    odfs->m_voxelSizeY = m_voxelSizeY;
-    odfs->m_voxelSizeZ = m_voxelSizeZ;
-    
+        
     float voxelX = DatasetManager::getInstance()->getVoxelX();
     float voxelY = DatasetManager::getInstance()->getVoxelY();
     float voxelZ = DatasetManager::getInstance()->getVoxelZ();
@@ -135,6 +102,9 @@ bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
 	std::vector< float > odfFloatData( nVoxels * m_bands );
 	
     //double radius=1e-3;
+    
+    // TODO Sylvain you should use the value that you want. The current value
+    // is in m_displayRadius. You should set a default value in the constructor.
     double radius = 1.0;
 	odfFloatData=shoreToSh( eapData, radius, nVoxels, m_bands);
 	std::cout << "avant createStructure" << std::endl;
@@ -143,18 +113,12 @@ bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
 	
 // 	creer un pointeur sur un objet ODF dans le constructeur EAPs et ensuite s'en sevir pour appeler createStrucure
 	// TODO Sylvain you are here.
-    odfs->createStructure( odfFloatData ); 
-//     createStructure( odfFloatData );
-// 	createStructure( l_data);
-
+    createStructure( odfFloatData );
 
     m_isLoaded = true;
 
     return true;
 }
-
-
-
 
 
 ///////////////////////////////////////////////////////////////////////////
@@ -193,24 +157,13 @@ bool EAPs::createStructure( std::vector< float >& shore_data )
 // 	
 // 
 // 
-    return true;
-}
-
-void EAPs::draw()
-{
-    odfs->draw();
+    return ODFs::createStructure( shore_data );
 }
 
 void EAPs::drawGlyph(int zVoxel, int yVoxel, int xVoxel, AxisType axis)
 {
-    odfs->drawGlyph(zVoxel, yVoxel, xVoxel, axis);
+    ODFs::drawGlyph(zVoxel, yVoxel, xVoxel, axis);
 }
-
-void EAPs::sliderPosChanged( AxisType axis )
-{
-    odfs->sliderPosChanged( axis );
-}
-
 
 std::vector< float > EAPs::shoreToSh( float* shoreData,  double radius, int nVoxels, int m_bands)
 {
@@ -308,71 +261,43 @@ double EAPs::kappa(unsigned n, unsigned l, double zeta)
 // 	return M[:,0:counter]
 
 
+bool EAPs::updateDisplayRadius()
+{
+    float newRad = m_pSliderRadius->GetValue() / 100.0f;
+
+    if( newRad != m_displayRadius )
+    {
+        m_displayRadius = newRad;
+        
+        // Sylvain TODO here update your coefficients and call createStructure.
+        
+        return true;
+    }
+    
+    return false;
+}
 
 void EAPs::createPropertiesSizer( PropertiesWindow *pParent )
 {
-    Glyph::createPropertiesSizer( pParent );
+    ODFs::createPropertiesSizer( pParent );
     
     setColorWithPosition( true );
     
     wxBoxSizer *pBoxMain = new wxBoxSizer( wxVERTICAL );
     
     //////////////////////////////////////////////////////////////////////////
+
+    m_pSliderRadius = new MySlider( pParent, wxID_ANY, 50, 0, 100, DEF_POS, wxSize( 150, -1 ), wxSL_HORIZONTAL  );
     
-    // TODO radius slider goes here
-    //m_pSliderRadius = new MySlider( pParent, wxID_ANY, 5, 0, 10,    DEF_POS, wxSize( 100, -1 ), wxSL_HORIZONTAL | wxSL_AUTOTICKS );
-    //m_pTxtThres    = new wxTextCtrl(   pParent, wxID_ANY, wxT( "0.5"), DEF_POS, wxSize(  40, -1 ), wxTE_READONLY);
-    //m_pLblThres    = new wxStaticText( pParent, wxID_ANY, wxT( "Threshold" ) );
-    //m_pBtnMainDir  = new wxButton(     pParent, wxID_ANY, wxT( "Recalculate" ), DEF_POS, wxSize( 140, -1 ) );
-    //wxRadioButton *pRadDescoteauxBasis = new wxRadioButton( pParent, wxID_ANY, wxT( "Descoteaux" ), DEF_POS, DEF_SIZE, wxRB_GROUP );
-    //wxRadioButton *pRadTournierBasis   = new wxRadioButton( pParent, wxID_ANY, wxT( "MRtrix" ) );
-    //wxRadioButton *pRadDipyBasis   = new wxRadioButton( pParent, wxID_ANY, wxT( "Dipy" ) );
-    ////     wxRadioButton *pRadOriginalBasis   = new wxRadioButton( pParent, wxID_ANY, wxT( "RR5768" ) );
-    ////     wxRadioButton *pRadPTKBasis        = new wxRadioButton( pParent, wxID_ANY, wxT( "PTK" ) );
+    wxFlexGridSizer *pGridSliders = new wxFlexGridSizer( 2 );
+    
+    pGridSliders->Add( new wxStaticText( pParent, wxID_ANY, wxT( "EAP Rad" ) ), 0, wxALIGN_RIGHT | wxALIGN_CENTER_VERTICAL | wxALL, 1 );
+    pGridSliders->Add( m_pSliderRadius, 0, wxALIGN_LEFT | wxEXPAND | wxALL, 1 );
+    
+    pBoxMain->Add( pGridSliders, 0, wxEXPAND, 0 );
     
     //////////////////////////////////////////////////////////////////////////
-    
-    /*wxBoxSizer *pBoxFlood = new wxBoxSizer( wxHORIZONTAL );
-    pBoxFlood->Add( m_pLblThres,   0, wxALIGN_CENTER_VERTICAL | wxALL, 1 );
-    pBoxFlood->Add( m_pSliderFlood, 1, wxALIGN_CENTER_VERTICAL | wxALL, 1 );
-    pBoxFlood->Add( m_pTxtThres, 0, wxFIXED_MINSIZE | wxALIGN_RIGHT | wxALIGN_CENTER_VERTICAL | wxALL, 1 );
-    pBoxMain->Add( pBoxFlood, 0, wxEXPAND, 0 );*/
-    
-    //////////////////////////////////////////////////////////////////////////
-    
-    //pBoxMain->Add( m_pBtnMainDir, 0, wxALIGN_CENTER | wxEXPAND | wxRIGHT | wxLEFT, 24 );
-    
-    /*wxBoxSizer *pBoxShBasis = new wxBoxSizer( wxVERTICAL );
-    pBoxShBasis->Add( new wxStaticText( pParent, wxID_ANY, wxT( "Sh Basis:" ) ), 0, wxALIGN_LEFT | wxALL, 1 );
-    
-    wxBoxSizer *pBoxShBasisRadios = new wxBoxSizer( wxVERTICAL );
-    //     pBoxShBasisRadios->Add( pRadOriginalBasis,   0, wxALIGN_LEFT | wxALL, 1 );
-    pBoxShBasisRadios->Add( pRadDescoteauxBasis, 0, wxALIGN_LEFT | wxALL, 1 );
-    pBoxShBasisRadios->Add( pRadTournierBasis,   0, wxALIGN_LEFT | wxALL, 1 );
-    pBoxShBasisRadios->Add( pRadDipyBasis,   0, wxALIGN_LEFT | wxALL, 1 );
-    //     pBoxShBasisRadios->Add( pRadPTKBasis,        0, wxALIGN_LEFT | wxALL, 1 );
-    pBoxShBasis->Add( pBoxShBasisRadios, 0, wxALIGN_LEFT | wxLEFT, 32 );
-    
-    pBoxMain->Add( pBoxShBasis, 0, wxFIXED_MINSIZE | wxEXPAND, 0 );*/
-    
-    //////////////////////////////////////////////////////////////////////////
-    
-    //pParent->Connect( m_pSliderFlood->GetId(),      wxEVT_COMMAND_SLIDER_UPDATED,       wxCommandEventHandler( PropertiesWindow::OnSliderAxisMoved ) );
-    //pParent->Connect( m_pBtnMainDir->GetId(),       wxEVT_COMMAND_BUTTON_CLICKED,       wxCommandEventHandler( PropertiesWindow::OnRecalcMainDir ) );
-    ////     pParent->Connect( pRadOriginalBasis->GetId(),   wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PropertiesWindow::OnOriginalShBasis ) );
-    //pParent->Connect( pRadDescoteauxBasis->GetId(), wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PropertiesWindow::OnDescoteauxShBasis ) );
-    //pParent->Connect( pRadTournierBasis->GetId(),   wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PropertiesWindow::OnTournierShBasis ) );
-    //pParent->Connect( pRadDipyBasis->GetId(),   wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PropertiesWindow::OnDipyShBasis ) );
-    ////     pParent->Connect( pRadPTKBasis->GetId(),        wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PropertiesWindow::OnPTKShBasis ) );
-    
-    //////////////////////////////////////////////////////////////////////////
-    
-    //     pRadOriginalBasis->SetValue(   isShBasis( SH_BASIS_RR5768 ) );
-    //pRadDescoteauxBasis->SetValue( isShBasis( SH_BASIS_DESCOTEAUX ) );
-    //pRadTournierBasis->SetValue(   isShBasis( SH_BASIS_TOURNIER ) );
-    //pRadDipyBasis->SetValue(   isShBasis( SH_BASIS_DIPY ) );
-    //     pRadPTKBasis->SetValue(        isShBasis( SH_BASIS_PTK ) );
-    
+        
     m_pSliderLightAttenuation->SetValue( m_pSliderLightAttenuation->GetMin() );
     m_pSliderLightXPosition->SetValue( m_pSliderLightXPosition->GetMin() );
     m_pSliderLightYPosition->SetValue( m_pSliderLightYPosition->GetMin() );
@@ -381,14 +306,17 @@ void EAPs::createPropertiesSizer( PropertiesWindow *pParent )
     //////////////////////////////////////////////////////////////////////////
     
     m_pPropertiesSizer->Add( pBoxMain, 0, wxFIXED_MINSIZE | wxEXPAND, 0 );
+    
+    pParent->Connect( m_pSliderRadius->GetId(), wxEVT_COMMAND_SLIDER_UPDATED,       wxCommandEventHandler( PropertiesWindow::OnEAPRadiusSliderMoved ) );
 }
 
 void EAPs::updatePropertiesSizer()
 {
-    //     Glyph::updatePropertiesSizer();
-    DatasetInfo::updatePropertiesSizer();
+
+    ODFs::updatePropertiesSizer();
     
-    m_pSliderLightAttenuation->Enable( false );
+    //TODO JC GUI THIS IS NOT NEEDED.
+    /*m_pSliderLightAttenuation->Enable( false );
     m_pSliderLightXPosition->Enable( false );
     m_pSliderLightYPosition->Enable( false );
     m_pSliderLightZPosition->Enable( false );
@@ -407,7 +335,7 @@ void EAPs::updatePropertiesSizer()
     m_pToggleAxisFlipX->SetValue( isAxisFlipped( X_AXIS ) );
     m_pToggleAxisFlipY->SetValue( isAxisFlipped( Y_AXIS ) );
     m_pToggleAxisFlipZ->SetValue( isAxisFlipped( Z_AXIS ) );
-    m_pToggleColorWithPosition->SetValue( getColorWithPosition() );
+    m_pToggleColorWithPosition->SetValue( getColorWithPosition() );*/
     
     //m_psliderScalingFactor->SetValue(m_psliderScalingFactor->GetMin());
     
