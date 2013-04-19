@@ -37,10 +37,10 @@ using std::pair;
 
 #include <vector>
 using std::vector;
-/*
+
 
 #include <math.h>
-#include <gsl.h>*/
+// #include <gsl.h>
 #include <gsl/gsl_sf_laguerre.h>
 #include <boost/math/special_functions/laguerre.hpp>
 #include <boost/math/special_functions/gamma.hpp>
@@ -224,42 +224,96 @@ std::vector< float > EAPs::shoreToSh( float* shoreData,  double radius, int nVox
 // (regarder aussi cmath.h)	
 // 	genlaguerre(n - l,l + 0.5)(r ** 2 / zeta)
 	unsigned n(3);
-	unsigned l(2);
-	double x(1e-2);
-	double lagf(0.0);
+	unsigned l(2);	
 	double zeta(700); //A inserer dans la fonction
+	zeta=1/(4 * pow(M_PI,2) * zeta);
+	double R(1e-2);
+	double x(pow(R,2)/zeta);
 
 	//Il me faut  definir quels sont les coefficient d'harmonic spherique pour un r fixe
-	double res(shoreFunction(n,l,zeta,x));
+// 	double res(shoreFunction(n,l,zeta,x));
+// 
+// 	std::cout << "res: " << res << std::endl;
+    std::vector< float > shoreDataAranged( nVoxels * m_bands );
 
-	std::cout << "res: " << res << std::endl;
-    std::vector< float > odfFloatData( nVoxels * m_bands );
-
+	 
     // We need to do a bit of moving around with the data in order to have it like we want.
+	// This step and the next one could merge together to decrease the computation cost
     for( int i( 0 ); i < nVoxels; ++i )
     {
         for( int j( 0 ); j < m_bands; ++j )
         {
-            odfFloatData[i * m_bands + j] = shoreData[j * nVoxels + i]*radius;
+            shoreDataAranged[i * m_bands + j] = shoreData[j * nVoxels + i];
         }
     }
-    
+ 
+	//EAP modeling in Spherical Harmonic basis at a radius R
+	unsigned radialOrder(4);
+	unsigned angularOrder(0);
+	if ((radialOrder%2)==0)
+	{
+		angularOrder=radialOrder;
+	}
+	else{
+		angularOrder=radialOrder+1;
+	}
+
+	unsigned ShNumber=(radialOrder+1)*((radialOrder+1)/2)*(2*radialOrder+1);
+	std::vector< float > odfFloatData( nVoxels * ShNumber );
+	
+	//j is the SH index
+	unsigned j(0);
+	
+	//SH coefficients computation
+	for( int i( 0 ); i < nVoxels; ++i )
+	{
+		for( unsigned l( 0 ); l < angularOrder; ++l )
+		{	
+			for( unsigned m( -l ); m <= l; ++m )
+			{
+				j++;
+				for( unsigned n( 0 ); n < radialOrder; ++n )
+				{
+					odfFloatData[i * ShNumber + j]+=shoreDataAranged[i * m_bands + n*j + n]*shoreFunction(n,l,zeta,x);
+				}
+			}
+		}
+	}
+// 	std::vector< float > odfFloatData( nVoxels * m_bands );
+// 	 
+//     // We need to do a bit of moving around with the data in order to have it like we want.
+// 	// This step and the next one could merge together to decrease the computation cost
+//     for( int i( 0 ); i < nVoxels; ++i )
+//     {
+//         for( int j( 0 ); j < m_bands; ++j )
+//         {
+//             odfFloatData[i * m_bands + j] = shoreData[j * nVoxels + i];
+//         }
+//     }
+ 
+		
+		
     return odfFloatData;
 }
 
 
 double EAPs::shoreFunction(unsigned n, unsigned l, double zeta, double x)
 {
-		double res(1);
-		res*=boost::math::laguerre( n  , l , x );
-		std::cout << "res: " << res << std::endl;
-		res*=exp(-x/2);
-		std::cout << "res: " << res << std::endl;
-		res*=kappa(n,l,zeta);
-		std::cout << "res: " << res << std::endl;
-		res*=pow(x,2);
+	
+	
+	double res(1);
+// 	std::cout << "n-l/2: " << n-l/2 << std::endl;
+	res*=pow(-1,n-l/2);
+// 	std::cout << "res: " << res << std::endl;
+	res*=boost::math::laguerre( n  - l , l + 0.5 , x );
+// 	std::cout << "res: " << res << std::endl;
+	res*=exp(-x/2);
+// 	std::cout << "res: " << res << std::endl;
+	res*=kappa(n,l,zeta);
+// 	std::cout << "res: " << res << std::endl;
+	res*=pow(x,l/2);
 
-		return res;
+	return res;
 }
 
 
