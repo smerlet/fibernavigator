@@ -113,6 +113,9 @@ public:
     void OnGlyphAxesSelected                ( wxCommandEvent& event ); // The display the 3 vector representing the ellipsoid.    
     void OnGlyphMainAxisSelected            ( wxCommandEvent& event ); // The display of the main vector of the ellipsoid.    
     void OnGlyphColorWithPosition           ( wxCommandEvent& event ); // The color with position.
+    
+    void OnEAPRadiusSliderMoved             ( wxCommandEvent& event ); // The EAP display radius.
+    
     void OnBoxScalingFactor                 ( wxCommandEvent& event ); // The scaling factor.   
 
     void OnNormalizeTensors                 ( wxCommandEvent& event ); //normalise tensors values;

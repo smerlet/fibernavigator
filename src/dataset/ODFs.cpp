@@ -222,6 +222,8 @@ bool ODFs::createStructure( vector< float >& i_fileFloatData )
     m_nbGlyphs         = DatasetManager::getInstance()->getColumns() * DatasetManager::getInstance()->getRows() * DatasetManager::getInstance()->getFrames();
     m_order            = (int)(-3.0f / 2.0f + sqrt( 9.0f / 4.0f - 2.0f * ( 1 - m_bands ) ) );
 
+	
+	m_coefficients.clear();
     m_coefficients.resize( m_nbGlyphs );
     vector< float >::iterator it;
     int i = 0;

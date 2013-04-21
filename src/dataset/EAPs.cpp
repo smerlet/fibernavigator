@@ -13,13 +13,10 @@
 
 #include "DatasetManager.h"
 #include "../Logger.h"
-#include "../gfx/ShaderHelper.h"
 #include "../gui/MyListCtrl.h"
-#include "../gui/SceneManager.h"
 #include "../misc/nifti/nifti1_io.h"
 #include "../misc/Fantom/FMatrix.h"
 
-#include <GL/glew.h>
 #include <wx/math.h>
 #include <wx/xml/xml.h>
 
@@ -53,17 +50,10 @@ using std::vector;
 
 
 EAPs::EAPs( const wxString &filename )
-:   Glyph(), 
-    m_isMaximasSet   ( false ),
-    m_axisThreshold  ( 0.5f ),
-    m_order          ( 0 ),
-    m_radiusAttribLoc( 0 ),
-    m_radiusBuffer   ( NULL ),    
-    m_nbors          ( NULL ),
-	m_sh_basis       ( SH_BASIS_DIPY )
+:   ODFs( filename )
 {
-    m_scalingFactor = 5.0f;
-    m_fullPath = filename;
+    m_order = 0;
+    m_sh_basis = SH_BASIS_DIPY;
 
 #ifdef __WXMSW__
     m_name = filename.AfterLast( '\\' );
@@ -72,27 +62,12 @@ EAPs::EAPs( const wxString &filename )
 #endif
     
     m_type = EAPS;
-
-    // Generating hemispheres
-    generateSpherePoints( m_scalingFactor );
-// 	
- 	odfs=new ODFs(filename); // Ne pas oublier de delete l'odfs dans le destructeur
 }
 
 EAPs::~EAPs()
 {
     Logger::getInstance()->print( wxT( "Executing EAPs destructor..." ), LOGLEVEL_DEBUG );
-    if( m_radiusBuffer )
-    {
-        glDeleteBuffers( 1, m_radiusBuffer );
-        delete [] m_radiusBuffer;
-    }
-
-    if( m_nbors != NULL )
-    {
-        delete [] m_nbors;
-        m_nbors = NULL;
-    }
+// 	shoreDataAranged.clear();
     Logger::getInstance()->print( wxT( "EAPs destructor done." ), LOGLEVEL_DEBUG );
 }
 
@@ -101,20 +76,12 @@ bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
     m_columns = pHeader->dim[1];
     m_rows    = pHeader->dim[2];
     m_frames  = pHeader->dim[3];
-    m_bands   = pHeader->dim[4];
-    odfs->m_columns = m_columns;
-    odfs->m_rows = m_rows;
-    odfs->m_frames = m_frames;
-    odfs->m_bands = m_bands;
+    m_bands_EAP   = pHeader->dim[4];
 
     m_voxelSizeX = pHeader->dx;
     m_voxelSizeY = pHeader->dy;
     m_voxelSizeZ = pHeader->dz;
-    
-    odfs->m_voxelSizeX = m_voxelSizeX;
-    odfs->m_voxelSizeY = m_voxelSizeY;
-    odfs->m_voxelSizeZ = m_voxelSizeZ;
-    
+        
     float voxelX = DatasetManager::getInstance()->getVoxelX();
     float voxelY = DatasetManager::getInstance()->getVoxelY();
     float voxelZ = DatasetManager::getInstance()->getVoxelZ();
@@ -127,34 +94,55 @@ bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
 
     m_type = EAPS;
 
+    
+
+    float *eapData = (float*)pBody->data; //Reange ici une bonne fois pour ttoute
+
     int nVoxels = m_columns * m_rows * m_frames;
+    
+	shoreDataAranged.resize(nVoxels * m_bands_EAP, 0);
+	 
+    // We need to do a bit of moving around with the data in order to have it like we want.
+	// This step and the next one could merge together to decrease the computation cost
+    for( int i( 0 ); i < nVoxels; ++i )
+    {
+        for( int j( 0 ); j < m_bands_EAP; ++j )
+        {
+            shoreDataAranged[i * m_bands_EAP + j] = eapData[j * nVoxels + i];
+        }
+    }
+    
+    
+	radialOrder_EAP=4;
+	angularOrder_EAP=0;
+	if ((radialOrder_EAP%2)==0)
+	{
+		angularOrder_EAP=radialOrder_EAP;
+	}
+	else{
+		angularOrder_EAP=radialOrder_EAP+1;
+	}
 
-    float* eapData = (float*)pBody->data;
-
-	
-	std::vector< float > odfFloatData( nVoxels * m_bands );
 	
     //double radius=1e-3;
-    double radius = 1.0;
-	odfFloatData=shoreToSh( eapData, radius, nVoxels, m_bands);
+    
+    // TODO Sylvain you should use the value that you want. The current value
+    // is in m_displayRadius. You should set a default value in the constructor.
+    double radius = 1e-3;
+	std::vector< float > odfFloatData=shoreToSh(radius);
+	std::cout << "odfFloatData.size(): " << odfFloatData.size() << std::endl;
 	std::cout << "avant createStructure" << std::endl;
     // Once the file has been read successfully, we need to create the structure 
     // that will contain all the sphere points representing the ODFs.
 	
-// 	creer un pointeur sur un objet ODF dans le constructeur EAPs et ensuite s'en sevir pour appeler createStrucure
 	// TODO Sylvain you are here.
-    odfs->createStructure( odfFloatData ); 
-//     createStructure( odfFloatData );
-// 	createStructure( l_data);
-
+	m_bands=(angularOrder_EAP+1)*(angularOrder_EAP+2)/2;
+    createStructure( odfFloatData );
 
     m_isLoaded = true;
 
     return true;
 }
-
-
-
 
 
 ///////////////////////////////////////////////////////////////////////////
@@ -166,133 +154,54 @@ bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
 ///////////////////////////////////////////////////////////////////////////
 bool EAPs::createStructure( std::vector< float >& shore_data )
 {
-// // 	Generer les ODFs a partir des coeffient SHORE et utiliser un objet ODFs pour la vizualisation.
-// // Problem : createStructure de la classe ODFs est private.. :( Demander a JC pour trouver un autre moyen ou simplement 
-// // creer une fonction qui prend les SH et fait create structure dans le style de la fonction lODFs::load (une sorte de wrapper)
-// 
-// draft de la fonction:
-// 
-// 	//On transforme les coefficnet shore vers des coefficnets sh
-// 	sh_data=shoreToSh(shore_data, 0.5)
-// 
-// 	//Ensuite on met en forme les sh_data pour pouvoir utilser createStructure de la class ODF. Attention createStructure est private => faire un wrapper!
-//     // We need to do a bit of moving around with the data in order to have it like we want.
-// 	std::vector< float > l_fileFloatData( l_nSize * m_bands );
-//     for( int i( 0 ); i < l_nSize; ++i )
-//     {
-//         for( int j( 0 ); j < m_bands; ++j )
-//         {
-//             l_fileFloatData[i * m_bands + j] = sh_data[j * l_nSize + i];
-//         }
-//     }
-// 
-//     // Once the file has been read successfully, we need to create the structure 
-//     // that will contain all the sphere points representing the ODFs.
-//     ODFs::createStructure( l_fileFloatData );
-// 	
-// 	
-// 
-// 
-    return true;
-}
-
-void EAPs::draw()
-{
-    odfs->draw();
+    return ODFs::createStructure( shore_data );
 }
 
 void EAPs::drawGlyph(int zVoxel, int yVoxel, int xVoxel, AxisType axis)
 {
-    odfs->drawGlyph(zVoxel, yVoxel, xVoxel, axis);
+    ODFs::drawGlyph(zVoxel, yVoxel, xVoxel, axis);
 }
 
-void EAPs::sliderPosChanged( AxisType axis )
+std::vector< float > EAPs::shoreToSh(double radius)
 {
-    odfs->sliderPosChanged( axis );
-}
-
-
-std::vector< float > EAPs::shoreToSh( float* shoreData,  double radius, int nVoxels, int m_bands)
-{
-// 	Converti les coefficient SHORE vers des coefficients SH
-
-// see https://fr.wikipedia.org/wiki/C%2B%2B11
-// dans <math.h>:
-//  	double assoc_laguerre( unsigned n, unsigned m, double x ) ;
-// 	double laguerre( unsigned n, double x ) ;
-// 	exponentielles : exp
-// (regarder aussi cmath.h)	
-// 	genlaguerre(n - l,l + 0.5)(r ** 2 / zeta)
-	unsigned n(3);
-	unsigned l(2);	
+	
 	double zeta(700); //A inserer dans la fonction
 	zeta=1/(4 * pow(M_PI,2) * zeta);
-	double R(1e-2);
-	double x(pow(R,2)/zeta);
+	double x(pow(radius,2)/zeta);
 
-	//Il me faut  definir quels sont les coefficient d'harmonic spherique pour un r fixe
-// 	double res(shoreFunction(n,l,zeta,x));
-// 
-// 	std::cout << "res: " << res << std::endl;
-    std::vector< float > shoreDataAranged( nVoxels * m_bands );
+	int nVoxels = m_columns * m_rows * m_frames;
 
-	 
-    // We need to do a bit of moving around with the data in order to have it like we want.
-	// This step and the next one could merge together to decrease the computation cost
-    for( int i( 0 ); i < nVoxels; ++i )
-    {
-        for( int j( 0 ); j < m_bands; ++j )
-        {
-            shoreDataAranged[i * m_bands + j] = shoreData[j * nVoxels + i];
-        }
-    }
  
 	//EAP modeling in Spherical Harmonic basis at a radius R
-	unsigned radialOrder(4);
-	unsigned angularOrder(0);
-	if ((radialOrder%2)==0)
-	{
-		angularOrder=radialOrder;
-	}
-	else{
-		angularOrder=radialOrder+1;
-	}
 
-	unsigned ShNumber=(radialOrder+1)*((radialOrder+1)/2)*(2*radialOrder+1);
+
+	unsigned ShNumber=(angularOrder_EAP+1)*(angularOrder_EAP+2)/2; //comparer SH_number et m_band de odf
 	std::vector< float > odfFloatData( nVoxels * ShNumber );
 	
 	//j is the SH index
 	unsigned j(0);
+	unsigned counter(0);
 	
 	//SH coefficients computation
 	for( int i( 0 ); i < nVoxels; ++i )
-	{
-		for( unsigned l( 0 ); l < angularOrder; ++l )
-		{	
-			for( unsigned m( -l ); m <= l; ++m )
-			{
-				j++;
-				for( unsigned n( 0 ); n < radialOrder; ++n )
+	{		
+		counter=0;
+		for( int n( 0 ); n <= radialOrder_EAP; ++n )
+		{
+			j=0;
+			for( int l( 0 ); l <= n; l+=2 )
+			{					
+				for( int m( -l ); m <= l; ++m )
 				{
-					odfFloatData[i * ShNumber + j]+=shoreDataAranged[i * m_bands + n*j + n]*shoreFunction(n,l,zeta,x);
+					odfFloatData[i * ShNumber + j]+=shoreDataAranged[i * m_bands_EAP + counter]*shoreFunction(n,l,zeta,x);
+					counter++;
+					j++;
 				}
+				
 			}
 		}
 	}
-// 	std::vector< float > odfFloatData( nVoxels * m_bands );
-// 	 
-//     // We need to do a bit of moving around with the data in order to have it like we want.
-// 	// This step and the next one could merge together to decrease the computation cost
-//     for( int i( 0 ); i < nVoxels; ++i )
-//     {
-//         for( int j( 0 ); j < m_bands; ++j )
-//         {
-//             odfFloatData[i * m_bands + j] = shoreData[j * nVoxels + i];
-//         }
-//     }
- 
-		
-		
+
     return odfFloatData;
 }
 
@@ -302,15 +211,10 @@ double EAPs::shoreFunction(unsigned n, unsigned l, double zeta, double x)
 	
 	
 	double res(1);
-// 	std::cout << "n-l/2: " << n-l/2 << std::endl;
 	res*=pow(-1,n-l/2);
-// 	std::cout << "res: " << res << std::endl;
 	res*=boost::math::laguerre( n  - l , l + 0.5 , x );
-// 	std::cout << "res: " << res << std::endl;
 	res*=exp(-x/2);
-// 	std::cout << "res: " << res << std::endl;
 	res*=kappa(n,l,zeta);
-// 	std::cout << "res: " << res << std::endl;
 	res*=pow(x,l/2);
 
 	return res;
@@ -330,103 +234,47 @@ double EAPs::kappa(unsigned n, unsigned l, double zeta)
 	return res;
 }
 
-// def EAPmatrix(self,r, theta, phi):
-// 	"Compute the matrix function used to model the diffusion propagator"
-// 	radialOrder = self.radialOrder
-// 	zeta = 1/(4 * pi**2 * self.zeta)
-// 
-// 	if mod(radialOrder,2)==0:
-// 		angularOrder=radialOrder
-// 	else:
-// 		angularOrder=radialOrder+1
-// 	
-// 	M = zeros((r.shape[0],(radialOrder+1)*((radialOrder+1)/2)*(2*radialOrder+1)))
-// 	Y = SphericalHarmonics.matrix(theta, phi, order=angularOrder)
-// 
-// 	counter=0;
-// 	for n in range(radialOrder+1):
-// 		for l in range(0,n+1,2):
-// 			for m in range(-l,l+1):
-// 				j = SphericalHarmonics.j(l,m)
-// 				#print(counter)
-// 				#print "(n,l,m) = (%d,%d,%d)" % (n,l,m)
-// 				#print(counter)
-// 				M[:,counter] = (-1)**(n - l/2) * \
-// 					Y[:,j] * \
-// 					genlaguerre(n - l,l + 0.5)(r ** 2 / zeta) * \
-// 					exp(- r ** 2 / (2 * zeta)) * \
-// 					HermitePolynomial.kappa(zeta, n, l) * \
-// 					(r ** 2 / zeta)**(l/2)
-// 				#print(sum(genlaguerre(n - l/2,l + 0.5)(r ** 2 / zeta)))
-// 				counter+=1
-// 	return M[:,0:counter]
 
 
+
+bool EAPs::updateDisplayRadius()
+{
+    float newRad = m_pSliderRadius->GetValue() / 10000.0f;
+
+    if( newRad != m_displayRadius )
+    {
+        m_displayRadius = newRad;
+// 		m_displayRadius = 1e-3;
+        std::vector< float > odfFloatData=shoreToSh(m_displayRadius);
+		createStructure( odfFloatData );
+        
+        return true;
+    }
+    
+    return false;
+}
 
 void EAPs::createPropertiesSizer( PropertiesWindow *pParent )
 {
-    Glyph::createPropertiesSizer( pParent );
+    ODFs::createPropertiesSizer( pParent );
     
     setColorWithPosition( true );
     
     wxBoxSizer *pBoxMain = new wxBoxSizer( wxVERTICAL );
     
     //////////////////////////////////////////////////////////////////////////
+
+    m_pSliderRadius = new MySlider( pParent, wxID_ANY, 50, 0, 100, DEF_POS, wxSize( 150, -1 ), wxSL_HORIZONTAL  );
     
-    // TODO radius slider goes here
-    //m_pSliderRadius = new MySlider( pParent, wxID_ANY, 5, 0, 10,    DEF_POS, wxSize( 100, -1 ), wxSL_HORIZONTAL | wxSL_AUTOTICKS );
-    //m_pTxtThres    = new wxTextCtrl(   pParent, wxID_ANY, wxT( "0.5"), DEF_POS, wxSize(  40, -1 ), wxTE_READONLY);
-    //m_pLblThres    = new wxStaticText( pParent, wxID_ANY, wxT( "Threshold" ) );
-    //m_pBtnMainDir  = new wxButton(     pParent, wxID_ANY, wxT( "Recalculate" ), DEF_POS, wxSize( 140, -1 ) );
-    //wxRadioButton *pRadDescoteauxBasis = new wxRadioButton( pParent, wxID_ANY, wxT( "Descoteaux" ), DEF_POS, DEF_SIZE, wxRB_GROUP );
-    //wxRadioButton *pRadTournierBasis   = new wxRadioButton( pParent, wxID_ANY, wxT( "MRtrix" ) );
-    //wxRadioButton *pRadDipyBasis   = new wxRadioButton( pParent, wxID_ANY, wxT( "Dipy" ) );
-    ////     wxRadioButton *pRadOriginalBasis   = new wxRadioButton( pParent, wxID_ANY, wxT( "RR5768" ) );
-    ////     wxRadioButton *pRadPTKBasis        = new wxRadioButton( pParent, wxID_ANY, wxT( "PTK" ) );
+    wxFlexGridSizer *pGridSliders = new wxFlexGridSizer( 2 );
+    
+    pGridSliders->Add( new wxStaticText( pParent, wxID_ANY, wxT( "EAP Rad" ) ), 0, wxALIGN_RIGHT | wxALIGN_CENTER_VERTICAL | wxALL, 1 );
+    pGridSliders->Add( m_pSliderRadius, 0, wxALIGN_LEFT | wxEXPAND | wxALL, 1 );
+    
+    pBoxMain->Add( pGridSliders, 0, wxEXPAND, 0 );
     
     //////////////////////////////////////////////////////////////////////////
-    
-    /*wxBoxSizer *pBoxFlood = new wxBoxSizer( wxHORIZONTAL );
-    pBoxFlood->Add( m_pLblThres,   0, wxALIGN_CENTER_VERTICAL | wxALL, 1 );
-    pBoxFlood->Add( m_pSliderFlood, 1, wxALIGN_CENTER_VERTICAL | wxALL, 1 );
-    pBoxFlood->Add( m_pTxtThres, 0, wxFIXED_MINSIZE | wxALIGN_RIGHT | wxALIGN_CENTER_VERTICAL | wxALL, 1 );
-    pBoxMain->Add( pBoxFlood, 0, wxEXPAND, 0 );*/
-    
-    //////////////////////////////////////////////////////////////////////////
-    
-    //pBoxMain->Add( m_pBtnMainDir, 0, wxALIGN_CENTER | wxEXPAND | wxRIGHT | wxLEFT, 24 );
-    
-    /*wxBoxSizer *pBoxShBasis = new wxBoxSizer( wxVERTICAL );
-    pBoxShBasis->Add( new wxStaticText( pParent, wxID_ANY, wxT( "Sh Basis:" ) ), 0, wxALIGN_LEFT | wxALL, 1 );
-    
-    wxBoxSizer *pBoxShBasisRadios = new wxBoxSizer( wxVERTICAL );
-    //     pBoxShBasisRadios->Add( pRadOriginalBasis,   0, wxALIGN_LEFT | wxALL, 1 );
-    pBoxShBasisRadios->Add( pRadDescoteauxBasis, 0, wxALIGN_LEFT | wxALL, 1 );
-    pBoxShBasisRadios->Add( pRadTournierBasis,   0, wxALIGN_LEFT | wxALL, 1 );
-    pBoxShBasisRadios->Add( pRadDipyBasis,   0, wxALIGN_LEFT | wxALL, 1 );
-    //     pBoxShBasisRadios->Add( pRadPTKBasis,        0, wxALIGN_LEFT | wxALL, 1 );
-    pBoxShBasis->Add( pBoxShBasisRadios, 0, wxALIGN_LEFT | wxLEFT, 32 );
-    
-    pBoxMain->Add( pBoxShBasis, 0, wxFIXED_MINSIZE | wxEXPAND, 0 );*/
-    
-    //////////////////////////////////////////////////////////////////////////
-    
-    //pParent->Connect( m_pSliderFlood->GetId(),      wxEVT_COMMAND_SLIDER_UPDATED,       wxCommandEventHandler( PropertiesWindow::OnSliderAxisMoved ) );
-    //pParent->Connect( m_pBtnMainDir->GetId(),       wxEVT_COMMAND_BUTTON_CLICKED,       wxCommandEventHandler( PropertiesWindow::OnRecalcMainDir ) );
-    ////     pParent->Connect( pRadOriginalBasis->GetId(),   wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PropertiesWindow::OnOriginalShBasis ) );
-    //pParent->Connect( pRadDescoteauxBasis->GetId(), wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PropertiesWindow::OnDescoteauxShBasis ) );
-    //pParent->Connect( pRadTournierBasis->GetId(),   wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PropertiesWindow::OnTournierShBasis ) );
-    //pParent->Connect( pRadDipyBasis->GetId(),   wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PropertiesWindow::OnDipyShBasis ) );
-    ////     pParent->Connect( pRadPTKBasis->GetId(),        wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( PropertiesWindow::OnPTKShBasis ) );
-    
-    //////////////////////////////////////////////////////////////////////////
-    
-    //     pRadOriginalBasis->SetValue(   isShBasis( SH_BASIS_RR5768 ) );
-    //pRadDescoteauxBasis->SetValue( isShBasis( SH_BASIS_DESCOTEAUX ) );
-    //pRadTournierBasis->SetValue(   isShBasis( SH_BASIS_TOURNIER ) );
-    //pRadDipyBasis->SetValue(   isShBasis( SH_BASIS_DIPY ) );
-    //     pRadPTKBasis->SetValue(        isShBasis( SH_BASIS_PTK ) );
-    
+        
     m_pSliderLightAttenuation->SetValue( m_pSliderLightAttenuation->GetMin() );
     m_pSliderLightXPosition->SetValue( m_pSliderLightXPosition->GetMin() );
     m_pSliderLightYPosition->SetValue( m_pSliderLightYPosition->GetMin() );
@@ -435,14 +283,17 @@ void EAPs::createPropertiesSizer( PropertiesWindow *pParent )
     //////////////////////////////////////////////////////////////////////////
     
     m_pPropertiesSizer->Add( pBoxMain, 0, wxFIXED_MINSIZE | wxEXPAND, 0 );
+    
+    pParent->Connect( m_pSliderRadius->GetId(), wxEVT_COMMAND_SLIDER_UPDATED,       wxCommandEventHandler( PropertiesWindow::OnEAPRadiusSliderMoved ) );
 }
 
 void EAPs::updatePropertiesSizer()
 {
-    //     Glyph::updatePropertiesSizer();
-    DatasetInfo::updatePropertiesSizer();
+
+    ODFs::updatePropertiesSizer();
     
-    m_pSliderLightAttenuation->Enable( false );
+    //TODO JC GUI THIS IS NOT NEEDED.
+    /*m_pSliderLightAttenuation->Enable( false );
     m_pSliderLightXPosition->Enable( false );
     m_pSliderLightYPosition->Enable( false );
     m_pSliderLightZPosition->Enable( false );
@@ -461,7 +312,7 @@ void EAPs::updatePropertiesSizer()
     m_pToggleAxisFlipX->SetValue( isAxisFlipped( X_AXIS ) );
     m_pToggleAxisFlipY->SetValue( isAxisFlipped( Y_AXIS ) );
     m_pToggleAxisFlipZ->SetValue( isAxisFlipped( Z_AXIS ) );
-    m_pToggleColorWithPosition->SetValue( getColorWithPosition() );
+    m_pToggleColorWithPosition->SetValue( getColorWithPosition() );*/
     
     //m_psliderScalingFactor->SetValue(m_psliderScalingFactor->GetMin());
     
