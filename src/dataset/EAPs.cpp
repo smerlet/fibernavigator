@@ -68,6 +68,7 @@ EAPs::~EAPs()
 {
     Logger::getInstance()->print( wxT( "Executing EAPs destructor..." ), LOGLEVEL_DEBUG );
 // 	shoreDataAranged.clear();
+
     Logger::getInstance()->print( wxT( "EAPs destructor done." ), LOGLEVEL_DEBUG );
 }
 
@@ -77,6 +78,7 @@ bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
     m_rows    = pHeader->dim[2];
     m_frames  = pHeader->dim[3];
     m_bands_EAP   = pHeader->dim[4];
+
 
     m_voxelSizeX = pHeader->dx;
     m_voxelSizeY = pHeader->dy;
@@ -128,15 +130,18 @@ bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
     
     // TODO Sylvain you should use the value that you want. The current value
     // is in m_displayRadius. You should set a default value in the constructor.
+
     double radius = 1e-3;
 	std::vector< float > odfFloatData=shoreToSh(radius);
 	std::cout << "odfFloatData.size(): " << odfFloatData.size() << std::endl;
+
 	std::cout << "avant createStructure" << std::endl;
     // Once the file has been read successfully, we need to create the structure 
     // that will contain all the sphere points representing the ODFs.
 	
 	// TODO Sylvain you are here.
 	m_bands=(angularOrder_EAP+1)*(angularOrder_EAP+2)/2;
+
     createStructure( odfFloatData );
 
     m_isLoaded = true;
@@ -154,6 +159,7 @@ bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
 ///////////////////////////////////////////////////////////////////////////
 bool EAPs::createStructure( std::vector< float >& shore_data )
 {
+
     return ODFs::createStructure( shore_data );
 }
 
@@ -161,6 +167,7 @@ void EAPs::drawGlyph(int zVoxel, int yVoxel, int xVoxel, AxisType axis)
 {
     ODFs::drawGlyph(zVoxel, yVoxel, xVoxel, axis);
 }
+
 
 std::vector< float > EAPs::shoreToSh(double radius)
 {
@@ -173,8 +180,6 @@ std::vector< float > EAPs::shoreToSh(double radius)
 
  
 	//EAP modeling in Spherical Harmonic basis at a radius R
-
-
 	unsigned ShNumber=(angularOrder_EAP+1)*(angularOrder_EAP+2)/2; //comparer SH_number et m_band de odf
 	std::vector< float > odfFloatData( nVoxels * ShNumber );
 	
@@ -237,6 +242,7 @@ double EAPs::kappa(unsigned n, unsigned l, double zeta)
 
 
 
+
 bool EAPs::updateDisplayRadius()
 {
     float newRad = m_pSliderRadius->GetValue() / 10000.0f;
@@ -267,12 +273,13 @@ void EAPs::createPropertiesSizer( PropertiesWindow *pParent )
     m_pSliderRadius = new MySlider( pParent, wxID_ANY, 50, 0, 100, DEF_POS, wxSize( 150, -1 ), wxSL_HORIZONTAL  );
     
     wxFlexGridSizer *pGridSliders = new wxFlexGridSizer( 2 );
+
     
     pGridSliders->Add( new wxStaticText( pParent, wxID_ANY, wxT( "EAP Rad" ) ), 0, wxALIGN_RIGHT | wxALIGN_CENTER_VERTICAL | wxALL, 1 );
     pGridSliders->Add( m_pSliderRadius, 0, wxALIGN_LEFT | wxEXPAND | wxALL, 1 );
     
     pBoxMain->Add( pGridSliders, 0, wxEXPAND, 0 );
-    
+
     //////////////////////////////////////////////////////////////////////////
         
     m_pSliderLightAttenuation->SetValue( m_pSliderLightAttenuation->GetMin() );

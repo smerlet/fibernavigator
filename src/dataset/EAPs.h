@@ -61,6 +61,7 @@ private:
     // GUI elements
     MySlider *m_pSliderRadius;
 
+
 	std::vector< float > shoreToSh(double radius);
 	double shoreFunction(unsigned n, unsigned l, double zeta, double x)	;
 	double kappa(unsigned n, unsigned l, double zeta);
@@ -69,6 +70,7 @@ private:
 	unsigned angularOrder_EAP;
 // 	float* eapData;
 	std::vector< float > shoreDataAranged;
+
 };
 
 #endif /* EAPS_H */
