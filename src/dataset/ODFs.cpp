@@ -1467,11 +1467,7 @@ void ODFs::swap( ODFs &o )
     std::swap( m_radius, o.m_radius );
     std::swap( m_shMatrix, o.m_shMatrix );
     std::swap( m_phiThetaDirection, o.m_phiThetaDirection );
-    // 
-    //std::swap( m_meshPts, o.m_meshPts );
     std::swap( m_radiiMinMaxMap, o.m_radiiMinMaxMap );
-    // TODO EAP are those needed
-    //std::swap( m_angle_min, o.m_angle_min );
     std::swap( m_nbors, o.m_nbors );
     std::swap( m_mainDirections, o.m_mainDirections );
     std::swap( m_sh_basis, o.m_sh_basis );
