@@ -149,6 +149,16 @@ bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
     return true;
 }
 
+void EAPs::changeShBasis( SH_BASIS newBasis )
+{
+    Logger::getInstance()->print( wxT("In EAPs::changeShBasis"), LOGLEVEL_DEBUG );
+    
+    setShBasis( newBasis );
+    
+    std::vector< float > odfFloatData=shoreToSh(m_displayRadius);
+    createStructure( odfFloatData );
+}
+
 
 ///////////////////////////////////////////////////////////////////////////
 // This function fills up a vector (m_Points) that contains all the point 
@@ -337,4 +347,14 @@ void EAPs::updatePropertiesSizer()
         m_pTxtThres->Show();
         m_pBtnMainDir->Show();
     }*/
+}
+
+void EAPs::swap( EAPs &o )
+{
+    ODFs::swap( o );
+    std::swap( m_displayRadius, o.m_displayRadius );
+    std::swap( m_bands_EAP, o.m_bands_EAP );
+    std::swap( radialOrder_EAP, o.radialOrder_EAP );
+    std::swap( angularOrder_EAP, o.angularOrder_EAP );
+    std::swap( shoreDataAranged, o.shoreDataAranged );
 }

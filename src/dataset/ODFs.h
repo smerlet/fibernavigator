@@ -50,7 +50,7 @@ public:
     std::vector< FMatrix > getPhiTheta()                { return m_phiThetaDirection; }
 
     void setShBasis( SH_BASIS value )                   { m_sh_basis = value; }
-    void changeShBasis( SH_BASIS );
+    virtual void changeShBasis( SH_BASIS );
 
     void extractMaximas();
     std::vector< std::vector<Vector> > *getMainDirs()   { return &m_mainDirections;           };

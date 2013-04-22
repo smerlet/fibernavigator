@@ -37,6 +37,9 @@ public:
     // TODO Sylvain
     // bool save( wxXmlNode *pNode ) const;
     
+    // Inherited from ODFs
+    void changeShBasis( SH_BASIS );
+    
     // Reaction to events.
     bool updateDisplayRadius();
     
@@ -53,6 +56,8 @@ protected:
                                   int      i_yVoxel, 
                                   int      i_xVoxel, 
                                   AxisType i_axis );
+    
+    void swap( EAPs &o );
 
 private:
     // Variables
