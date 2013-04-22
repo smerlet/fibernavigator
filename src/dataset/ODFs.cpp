@@ -87,7 +87,7 @@ ODFs::ODFs( const wxString &filename )
 #endif
 
     // Generating hemispheres
-    generateSpherePoints( m_scalingFactor );
+    generateSpherePoints( m_scalingFactor / 5.0 );
 }
 
 ODFs::~ODFs()
@@ -222,7 +222,6 @@ bool ODFs::createStructure( vector< float >& i_fileFloatData )
     m_nbGlyphs         = DatasetManager::getInstance()->getColumns() * DatasetManager::getInstance()->getRows() * DatasetManager::getInstance()->getFrames();
     m_order            = (int)(-3.0f / 2.0f + sqrt( 9.0f / 4.0f - 2.0f * ( 1 - m_bands ) ) );
 
-
     m_coefficients.assign( m_nbGlyphs, vector<float>() );
     vector< float >::iterator it;
     int i = 0;
@@ -259,6 +258,7 @@ bool ODFs::createStructure( vector< float >& i_fileFloatData )
     // if we are called from the EAP.
     m_phiThetaDirection.clear();
     m_shMatrix.clear();
+    
     for( unsigned int i = 0; i < NB_OF_LOD; ++i )
     {
         // Creating phi / theta directions matrices with for all LODs
@@ -271,7 +271,7 @@ bool ODFs::createStructure( vector< float >& i_fileFloatData )
         getSphericalHarmonicMatrix( m_LODspheres[i], m_phiThetaDirection.back(), m_shMatrix.back() );
 
         // Fetching our odfs points
-        getODFpoints( m_phiThetaDirection.back(), m_LODspheres[i] );
+        //getODFpoints( m_phiThetaDirection.back(), m_LODspheres[i] );
     }
 
     // Fetching initial sliders positions
