@@ -140,10 +140,11 @@ private:
     std::vector< std::vector < float > >    m_radius;
     std::vector< FMatrix >                  m_shMatrix;
     std::vector< FMatrix >                  m_phiThetaDirection;
+    // TODO EAP is this needed.
     std::vector< float >                    m_meshPts;
     std::map< int, std::pair< float, float > > m_radiiMinMaxMap;
 
-    float                               m_angle_min;
+    //float                               m_angle_min;
     std::vector<std::pair<float,int> >* m_nbors;
     std::vector<std::vector<Vector> >   m_mainDirections;
 };

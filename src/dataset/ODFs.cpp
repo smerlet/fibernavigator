@@ -255,6 +255,10 @@ bool ODFs::createStructure( vector< float >& i_fileFloatData )
             return false; // We do nothing incase the param was not good.
     }
 
+    // Need to clean to make sure to have only the good coefficients,
+    // if we are called from the EAP.
+    m_phiThetaDirection.clear();
+    m_shMatrix.clear();
     for( unsigned int i = 0; i < NB_OF_LOD; ++i )
     {
         // Creating phi / theta directions matrices with for all LODs
@@ -280,6 +284,13 @@ bool ODFs::createStructure( vector< float >& i_fileFloatData )
     m_nbPointsPerGlyph = getLODNbOfPoints( m_currentLOD );
 
     //Create neighboring system once for maximas extraction
+    // Need to delete in case we are called from the EAP.
+    if( m_nbors != NULL )
+    {
+        delete [] m_nbors;
+        m_nbors = NULL;
+    }
+    
     m_nbors = new std::vector<std::pair<float,int> >[m_phiThetaDirection[LOD_3].getDimensionY()]; 
     set_nbors(m_phiThetaDirection[LOD_3]); 
     
@@ -1456,9 +1467,11 @@ void ODFs::swap( ODFs &o )
     std::swap( m_radius, o.m_radius );
     std::swap( m_shMatrix, o.m_shMatrix );
     std::swap( m_phiThetaDirection, o.m_phiThetaDirection );
-    std::swap( m_meshPts, o.m_meshPts );
+    // 
+    //std::swap( m_meshPts, o.m_meshPts );
     std::swap( m_radiiMinMaxMap, o.m_radiiMinMaxMap );
-    std::swap( m_angle_min, o.m_angle_min );
+    // TODO EAP are those needed
+    //std::swap( m_angle_min, o.m_angle_min );
     std::swap( m_nbors, o.m_nbors );
     std::swap( m_mainDirections, o.m_mainDirections );
     std::swap( m_sh_basis, o.m_sh_basis );

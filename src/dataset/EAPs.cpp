@@ -39,9 +39,9 @@ using std::vector;
 #include <math.h>
 // #include <gsl.h>
 #include <gsl/gsl_sf_laguerre.h>
-#include <boost/math/special_functions/laguerre.hpp>
-#include <boost/math/special_functions/gamma.hpp>
-#include <boost/math/special_functions/factorials.hpp>
+//#include <boost/math/special_functions/laguerre.hpp>
+//#include <boost/math/special_functions/gamma.hpp>
+//#include <boost/math/special_functions/factorials.hpp>
 
 
 #define DEF_POS   wxDefaultPosition
@@ -54,6 +54,7 @@ EAPs::EAPs( const wxString &filename )
 {
     m_order = 0;
     m_sh_basis = SH_BASIS_DIPY;
+    m_displayRadius = 1e-3;
 
 #ifdef __WXMSW__
     m_name = filename.AfterLast( '\\' );
@@ -124,15 +125,12 @@ bool EAPs::load( nifti_image *pHeader, nifti_image *pBody )
 	else{
 		angularOrder_EAP=radialOrder_EAP+1;
 	}
-
-	
-    //double radius=1e-3;
     
     // TODO Sylvain you should use the value that you want. The current value
     // is in m_displayRadius. You should set a default value in the constructor.
 
-    double radius = 1e-3;
-	std::vector< float > odfFloatData=shoreToSh(radius);
+    m_displayRadius = 1e-3;
+	std::vector< float > odfFloatData=shoreToSh( m_displayRadius );
 	std::cout << "odfFloatData.size(): " << odfFloatData.size() << std::endl;
 
 	std::cout << "avant createStructure" << std::endl;
@@ -227,7 +225,7 @@ double EAPs::shoreFunction(unsigned n, unsigned l, double zeta, double x)
 	
 	double res(1);
 	res*=pow(-1,n-l/2);
-	res*=boost::math::laguerre( n  - l , l + 0.5 , x );
+	//res*=boost::math::laguerre( n  - l , l + 0.5 , x );
 	res*=exp(-x/2);
 	res*=kappa(n,l,zeta);
 	res*=pow(x,l/2);
@@ -241,11 +239,12 @@ double EAPs::kappa(unsigned n, unsigned l, double zeta)
 	double res(0);
 	if(n-l<0)
 	{
-		res= sqrt( (2* 1) / (pow(zeta,1.5) * boost::math::tgamma(n + 1.5)) );
+		//res= sqrt( (2* 1) / (pow(zeta,1.5) * boost::math::tgamma(n + 1.5)) );
 	}
 	else{
-		return sqrt((2* boost::math::factorial<double>(n -l)) / (pow(zeta,1.5) * boost::math::tgamma(n + 1.5)) );
+		//return sqrt((2* boost::math::factorial<double>(n -l)) / (pow(zeta,1.5) * boost::math::tgamma(n + 1.5)) );
 	}
+    res = 1.0;
 	return res;
 }
 
